@@ -142,6 +142,7 @@ function fitAffine(px, ll) { // px:[[x,y]], ll:[[lat,lon]] -> funciones
 
 async function importGeoPDF(file) {
   const buf = await file.arrayBuffer();
+  if (latin1(new Uint8Array(buf.slice(0, 1024))).indexOf('%PDF') < 0) throw new Error('El archivo elegido no es un PDF. Elija el GeoPDF del plano.');
   const geo = findGeo(await pdfText(buf.slice(0)));
   if (!geo) throw new Error('Este PDF no tiene georreferencia legible (no se encontró un GeoPDF ISO 32000). Expórtelo desde QGIS o ArcGIS como GeoPDF.');
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
@@ -447,13 +448,23 @@ async function showMaps() {
 $('btnMaps').onclick = showMaps;
 $('btnFirst').onclick = () => $('file').click();
 $('btnFirstRestore').onclick = () => $('fileBk').click();
-$('file').onchange = async e => {
-  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+async function loadPlanFile(file) {
   const busy = document.createElement('div'); busy.className = 'busy'; busy.textContent = 'Leyendo el GeoPDF…'; document.body.appendChild(busy);
-  try { const m = await importGeoPDF(file); await DB.put('maps', m); closeSheet(); await openMap(m.id); toast('Plano cargado'); }
+  try { const m = await importGeoPDF(file); await DB.put('maps', m); closeSheet(); $('welcome').hidden = true; await openMap(m.id); toast('Plano cargado'); }
   catch (err) { console.error(err); sheet('No se pudo cargar', `<p>${esc(err.message || err)}</p><button class="btn" id="okE">Entendido</button>`, () => $('okE').onclick = closeSheet); }
   finally { busy.remove(); }
-};
+}
+$('file').onchange = e => { const file = e.target.files[0]; e.target.value = ''; if (file) loadPlanFile(file); };
+async function openFromUri(url) {
+  if (!url || !/^(content|file):/i.test(url)) return;
+  try {
+    const r = await FS.readFile({ path: url });
+    const bin = atob(r.data), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    let name = decodeURIComponent(url.split('/').pop() || 'Plano').replace(/^.*[:%]/, '') || 'Plano';
+    if (!/\.pdf$/i.test(name)) name = 'Plano ' + new Date().toLocaleDateString('es-CO') + '.pdf';
+    loadPlanFile(new File([u8], name, { type: 'application/pdf' }));
+  } catch (e) { showErr('Abrir archivo', e); }
+}
 
 /* ---------- Lista y exportación ---------- */
 function showList() {
@@ -658,6 +669,7 @@ window.addEventListener('unhandledrejection', e => showErr('Proceso', e.reason))
 (async () => {
   $('cross').hidden = pointMode() !== 'mira';
   try { startGps(); } catch (e) { showErr('GPS', e); }
+  try { APP?.addListener('appUrlOpen', d => openFromUri(d?.url)); APP?.getLaunchUrl?.().then(d => d?.url && setTimeout(() => openFromUri(d.url), 600)).catch(() => { }); } catch { }
   try { APP?.addListener('backButton', () => { if ($('sheets').innerHTML) closeSheet(); else if (!rec) APP.minimizeApp(); else toast('Grabando track: use Detener antes de salir'); }); } catch { }
   try { navigator.storage?.persist?.().catch(() => { }); } catch { }
   try { await loadTemplates(); } catch (e) { showErr('Plantillas', e); }
