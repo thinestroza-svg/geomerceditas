@@ -41,6 +41,8 @@ const DB = (() => {
         }
       };
       r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+      r.onblocked = () => rej(new Error('La base de datos está bloqueada; cierre y abra la app'));
+      setTimeout(() => rej(new Error('La base de datos no respondió')), 8000);
     });
     return dbp;
   }
@@ -646,20 +648,29 @@ $('btnSettings').onclick = () => {
 };
 
 /* ---------- Inicio ---------- */
+function showErr(where, e) {
+  const msg = `${where}: ${e?.message || e}`; console.error(msg, e);
+  let b = $('errbar'); if (!b) { b = document.createElement('div'); b.id = 'errbar'; b.className = 'errbar'; b.onclick = () => b.remove(); document.body.appendChild(b); }
+  b.textContent = 'Error — ' + msg + ' (toque para cerrar)';
+}
+window.addEventListener('error', e => showErr('Script', e.error || e.message));
+window.addEventListener('unhandledrejection', e => showErr('Proceso', e.reason));
 (async () => {
   $('cross').hidden = pointMode() !== 'mira';
-  try { navigator.storage?.persist?.(); } catch { }
-  await loadTemplates();
-  const cur = store.get('cur', null);
-  const maps = await DB.all('maps');
-  if (cur && maps.find(m => m.id === cur)) await openMap(cur);
-  else if (maps.length) await openMap(maps[0].id);
-  else $('welcome').hidden = false;
-  startGps();
+  try { startGps(); } catch (e) { showErr('GPS', e); }
+  try { APP?.addListener('backButton', () => { if ($('sheets').innerHTML) closeSheet(); else if (!rec) APP.minimizeApp(); else toast('Grabando track: use Detener antes de salir'); }); } catch { }
+  try { navigator.storage?.persist?.().catch(() => { }); } catch { }
+  try { await loadTemplates(); } catch (e) { showErr('Plantillas', e); }
+  let maps = [];
+  try { maps = await DB.all('maps'); } catch (e) { showErr('Base de datos', e); }
+  try {
+    const cur = store.get('cur', null);
+    if (cur && maps.find(m => m.id === cur)) await openMap(cur);
+    else if (maps.length) await openMap(maps[0].id);
+    else $('welcome').hidden = false;
+  } catch (e) { showErr('Abrir plano', e); $('welcome').hidden = false; }
   if (!NATIVE && 'serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
   if (needsBackup() && Date.now() - store.get('lastBackup', 0) > 24 * 36e5) setTimeout(() => toast('Tiene datos sin respaldar. Vaya a Ajustes › Crear respaldo.'), 1500);
-  // Botón atrás de Android: cierra hojas antes de salir
-  APP?.addListener('backButton', () => { if ($('sheets').innerHTML) closeSheet(); else if (!rec) APP.minimizeApp(); else toast('Grabando track: use Detener antes de salir'); });
 })();
 $('fileBk').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) restoreBackup(f); };
 window.__test = { importGeoPDF, findGeo, pdfText, buildKML, buildGPX, buildCSV, get features() { return features; } };
