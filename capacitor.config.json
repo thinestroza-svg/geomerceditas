@@ -1,0 +1,7 @@
+{
+  "appId": "co.tomas.planodecampo",
+  "appName": "Plano de Campo",
+  "webDir": "www",
+  "android": { "useLegacyBridge": true, "allowMixedContent": false },
+  "server": { "androidScheme": "https" }
+}

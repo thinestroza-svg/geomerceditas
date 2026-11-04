@@ -1,0 +1,42 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Copiar la app web al proyecto Android
+        run: npx cap sync android
+      - name: Compilar
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../PlanoDeCampo.apk
+      - name: Publicar versión descargable
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Plano de Campo 1.0.${{ github.run_number }}
+          body: Descargue PlanoDeCampo.apk desde el celular e instálelo.
+          files: PlanoDeCampo.apk

@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Plano de Campo</string>
+    <string name="title_activity_main">Plano de Campo</string>
+    <string name="package_name">co.tomas.planodecampo</string>
+    <string name="custom_url_scheme">co.tomas.planodecampo</string>
+    <string name="capacitor_background_geolocation_notification_channel_name">Grabación de tracks</string>
+    <string name="capacitor_background_geolocation_notification_color">#1f6b4a</string>
+</resources>
