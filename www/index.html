@@ -165,6 +165,22 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .fdef textarea{font:15px var(--ui);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:84px;width:100%}
 .chev{color:var(--accent);font-weight:600;font-size:13px}
 
+
+/* Pantalla de activación */
+.gate{position:fixed;inset:0;z-index:2550;overflow:auto;background:var(--bg);
+  padding:calc(var(--safe-t) + var(--brand-h) + 20px) max(20px,var(--safe-r)) calc(var(--safe-b) + 24px) max(20px,var(--safe-l))}
+.gate-card{max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.gate-logo{display:none}
+.gate h1{margin:0;font-size:24px;text-wrap:balance}
+.gate p{margin:0;line-height:1.5;color:var(--muted)}
+.gate-msg{color:var(--warn)!important;font-weight:600}
+.gate-dev{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.gate-dev span{font:600 11px var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.gate-dev b{font:700 22px var(--mono);letter-spacing:.04em;user-select:all;font-variant-numeric:tabular-nums}
+.gate-sep{border-top:1px solid var(--line);margin:4px 0}
+.gate textarea{font:14px var(--mono)!important;text-transform:uppercase}
+.sel{user-select:all;word-break:break-all;color:var(--ink)}
+
 /* Franja de marca fija: siempre visible */
 :root{--brand-h:48px}
 .brand{position:fixed;z-index:2600;left:0;right:0;top:0;height:calc(var(--safe-t) + var(--brand-h));
@@ -238,6 +254,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <script src="lib/proj4.js"></script>
 <script src="lib/pdf.min.js"></script>
 <script src="lib/jszip.min.js"></script>
+<script src="gate.js"></script>
 <script src="forms.js"></script>
 <script src="app.js"></script>
 </body>
