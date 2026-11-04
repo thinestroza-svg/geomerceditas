@@ -27,12 +27,18 @@ const DB = (() => {
   let dbp;
   function open() {
     if (!dbp) dbp = new Promise((res, rej) => {
-      const r = indexedDB.open('plano-campo', 1);
-      r.onupgradeneeded = () => {
+      const r = indexedDB.open('plano-campo', 2);
+      r.onupgradeneeded = (e) => {
         const d = r.result;
-        d.createObjectStore('maps', { keyPath: 'id' });
-        const f = d.createObjectStore('features', { keyPath: 'id' });
-        f.createIndex('mapId', 'mapId');
+        if (e.oldVersion < 1) {
+          d.createObjectStore('maps', { keyPath: 'id' });
+          const f = d.createObjectStore('features', { keyPath: 'id' });
+          f.createIndex('mapId', 'mapId');
+        }
+        if (e.oldVersion < 2) {
+          d.createObjectStore('templates', { keyPath: 'id' });
+          d.createObjectStore('photos', { keyPath: 'id' });
+        }
       };
       r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     });
@@ -48,8 +54,8 @@ const DB = (() => {
     });
   }
   return {
-    put: (n, v) => { if (n === 'features') markDirty(); return tx(n, 'readwrite', s => s.put(v)); },
-    del: (n, k) => { if (n === 'features') markDirty(); return tx(n, 'readwrite', s => s.delete(k)); },
+    put: (n, v) => { if (n !== 'maps') markDirty(); return tx(n, 'readwrite', s => s.put(v)); },
+    del: (n, k) => { if (n !== 'maps') markDirty(); return tx(n, 'readwrite', s => s.delete(k)); },
     get: (n, k) => tx(n, 'readonly', s => s.get(k)),
     all: (n) => tx(n, 'readonly', s => s.getAll()),
     byMap: (id) => tx('features', 'readonly', s => s.index('mapId').getAll(id)),
@@ -279,7 +285,7 @@ function nextName(prefix) {
 async function addPoint(lat, lon, source) {
   if (!curMap) { toast('Primero cargue un plano'); return; }
   const f = { id: uid(), mapId: curMap.id, type: 'point', name: nextName(store.get('prefix', 'P')), note: '', color: store.get('pcolor', COLORS[0]),
-    lat, lon, alt: source === 'gps' ? pos.alt : null, acc: source === 'gps' ? pos.acc : null, source, created: Date.now() };
+    tpl: defaultTplId(), data: {}, lat, lon, alt: source === 'gps' ? pos.alt : null, acc: source === 'gps' ? pos.acc : null, source, created: Date.now() };
   features.push(f); await DB.put('features', f); drawFeatures(); refreshSub();
   editPoint(f, true);
 }
@@ -307,7 +313,7 @@ async function recAdd(p) {
 $('btnTrack').onclick = async () => {
   if (!curMap) { toast('Primero cargue un plano'); return; }
   if (!rec) {
-    rec = { id: uid(), mapId: curMap.id, type: 'track', name: nextName('Track '), note: '', color: '#e0392b', coords: [], created: Date.now(), len: 0 };
+    rec = { id: uid(), mapId: curMap.id, type: 'track', name: nextName('Track '), note: '', color: '#e0392b', tpl: defaultTplId('track'), data: {}, coords: [], created: Date.now(), len: 0 };
     if (NATIVE) {
       try { await LN.requestPermissions(); } catch { }
       try {
@@ -351,36 +357,70 @@ function confirmBtn(btn, label, action) {
   btn.dataset.orig = btn.textContent;
 }
 
-function editPoint(f, isNew) {
+function editPoint(f, isNew, draft) {
   const [E, N] = toCTM(f.lat, f.lon);
   const src = { gps: 'GPS', mira: 'mira del mapa', mapa: 'toque en el mapa' }[f.source] || f.source;
+  // borrador: lo que se lleva escrito (para cambiar de plantilla sin perderlo)
+  const d = draft || { name: f.name, note: f.note, color: f.color, tpl: tplById(f.tpl) ? f.tpl : defaultTplId(), data: JSON.parse(JSON.stringify(f.data || {})) };
+  const t = tplById(d.tpl);
   sheet(isNew ? 'Punto nuevo' : 'Punto', `
-    <div class="field"><label for="pName">Nombre</label><input id="pName" value="${esc(f.name)}" autocomplete="off"></div>
-    <div class="field"><label for="pNote">Nota</label><textarea id="pNote" placeholder="Especie, observación, estado…">${esc(f.note)}</textarea></div>
-    <div class="field"><label>Color</label>${swatchHtml(f.color)}</div>
+    ${TPL.length > 1 ? `<div class="field"><label for="pTpl">Plantilla</label><select id="pTpl">${TPL.map(x => `<option value="${x.id}" ${x.id === d.tpl ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>` : ''}
+    <div class="field"><label for="pName">Nombre</label><input id="pName" value="${esc(d.name)}" autocomplete="off"></div>
+    ${formHtml(t, d.data)}
+    <div class="field"><label for="pNote">Nota</label><textarea id="pNote" placeholder="Observaciones generales">${esc(d.note)}</textarea></div>
+    <div class="field"><label>Color</label>${swatchHtml(d.color)}</div>
     <div class="kv">E ${fmtInt(E)} · N ${fmtInt(N)} (CTM12)<br>${f.lat.toFixed(6)}, ${f.lon.toFixed(6)}<br>${f.acc != null ? `±${Math.round(f.acc)} m · ` : ''}${f.alt != null ? `${Math.round(f.alt)} msnm · ` : ''}${src}<br>${new Date(f.created).toLocaleString('es-CO')}</div>
+    <p class="formerr" id="pErr" hidden></p>
     <div class="row"><button class="btn primary" id="pSave">Guardar</button><button class="btn" id="pGo">Centrar</button></div>
     <button class="btn danger" id="pDel">Eliminar punto</button>`, () => {
-    let color = f.color; bindSwatches(c => color = c);
-    if (isNew) $('pName').select();
-    $('pSave').onclick = async () => { f.name = $('pName').value.trim() || f.name; f.note = $('pNote').value; f.color = color; store.set('pcolor', color); await DB.put('features', f); drawFeatures(); closeSheet(); };
+    bindSwatches(c => d.color = c);
+    bindForm(t, d.data, f.id);
+    if (isNew && !draft) $('pName').select();
+    const grab = () => { d.name = $('pName').value; d.note = $('pNote').value; d.data = readForm(t, d.data).data; };
+    if ($('pTpl')) $('pTpl').onchange = e => { grab(); d.tpl = e.target.value; editPoint(f, isNew, d); };
+    $('pSave').onclick = async () => {
+      const r = readForm(t, d.data);
+      if (r.bad.length || r.missing.length) {
+        $('pErr').textContent = (r.bad.length ? `Revise el número en: ${r.bad.join(', ')}. ` : '') + (r.missing.length ? `Faltan campos obligatorios: ${r.missing.join(', ')}.` : '');
+        $('pErr').hidden = false; $('pErr').scrollIntoView({ block: 'center', behavior: 'smooth' }); return;
+      }
+      f.name = $('pName').value.trim() || f.name; f.note = $('pNote').value; f.color = d.color; f.tpl = d.tpl; f.data = r.data;
+      store.set('pcolor', d.color); await DB.put('features', f); drawFeatures(); closeSheet();
+    };
     $('pGo').onclick = () => { follow = false; $('btnGps').classList.remove('on'); map.setView([f.lat, f.lon], Math.max(map.getZoom(), 19)); closeSheet(); };
-    confirmBtn($('pDel'), 'Toque otra vez para eliminar', async () => { await DB.del('features', f.id); features = features.filter(x => x.id !== f.id); drawFeatures(); refreshSub(); closeSheet(); });
+    confirmBtn($('pDel'), 'Toque otra vez para eliminar', async () => { await deletePhotosOf({ ...f, data: { ...f.data, ...d.data } }); await DB.del('features', f.id); features = features.filter(x => x.id !== f.id); drawFeatures(); refreshSub(); closeSheet(); });
   });
 }
-function editTrack(f, isNew) {
-  const dur = f.coords.length > 1 ? (f.coords[f.coords.length - 1][3] - f.coords[0][3]) / 1000 : 0;
-  sheet(isNew ? 'Track guardado' : 'Track', `
-    <div class="field"><label for="tName">Nombre</label><input id="tName" value="${esc(f.name)}" autocomplete="off"></div>
-    <div class="field"><label for="tNote">Nota</label><textarea id="tNote">${esc(f.note)}</textarea></div>
-    <div class="field"><label>Color</label>${swatchHtml(f.color)}</div>
-    <div class="kv">${fmtDist(trackLen(f.coords))} · ${fmtTime(dur)} · ${f.coords.length} vértices<br>${new Date(f.created).toLocaleString('es-CO')}</div>
+const trackDur = f => f.coords.length > 1 ? (f.coords[f.coords.length - 1][3] - f.coords[0][3]) / 1000 : 0;
+function editTrack(f, isNew, draft) {
+  const d = draft || { name: f.name, note: f.note, color: f.color, tpl: tplById(f.tpl) ? f.tpl : defaultTplId('track'), data: JSON.parse(JSON.stringify(f.data || {})) };
+  const t = tplById(d.tpl);
+  const [E0, N0] = toCTM(f.coords[0][0], f.coords[0][1]), last = f.coords[f.coords.length - 1], [E1, N1] = toCTM(last[0], last[1]);
+  sheet(isNew ? 'Track nuevo' : 'Track', `
+    ${TPL.length > 1 ? `<div class="field"><label for="tTpl">Plantilla</label><select id="tTpl">${TPL.map(x => `<option value="${x.id}" ${x.id === d.tpl ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>` : ''}
+    <div class="field"><label for="tName">Nombre</label><input id="tName" value="${esc(d.name)}" autocomplete="off"></div>
+    ${formHtml(t, d.data)}
+    <div class="field"><label for="tNote">Nota</label><textarea id="tNote" placeholder="Observaciones generales">${esc(d.note)}</textarea></div>
+    <div class="field"><label>Color</label>${swatchHtml(d.color)}</div>
+    <div class="kv">${fmtDist(trackLen(f.coords))} · ${fmtTime(trackDur(f))} · ${f.coords.length} vértices<br>Inicio E ${fmtInt(E0)} · N ${fmtInt(N0)}<br>Fin E ${fmtInt(E1)} · N ${fmtInt(N1)}<br>${new Date(f.created).toLocaleString('es-CO')}</div>
+    <p class="formerr" id="tErr" hidden></p>
     <div class="row"><button class="btn primary" id="tSave">Guardar</button><button class="btn" id="tGo">Ver en el mapa</button></div>
     <button class="btn danger" id="tDel">Eliminar track</button>`, () => {
-    let color = f.color; bindSwatches(c => color = c);
-    $('tSave').onclick = async () => { f.name = $('tName').value.trim() || f.name; f.note = $('tNote').value; f.color = color; await DB.put('features', f); drawFeatures(); closeSheet(); };
+    bindSwatches(c => d.color = c);
+    bindForm(t, d.data, f.id);
+    const grab = () => { d.name = $('tName').value; d.note = $('tNote').value; d.data = readForm(t, d.data).data; };
+    if ($('tTpl')) $('tTpl').onchange = e => { grab(); d.tpl = e.target.value; editTrack(f, isNew, d); };
+    $('tSave').onclick = async () => {
+      const r = readForm(t, d.data);
+      if (r.bad.length || r.missing.length) {
+        $('tErr').textContent = (r.bad.length ? `Revise el número en: ${r.bad.join(', ')}. ` : '') + (r.missing.length ? `Faltan campos obligatorios: ${r.missing.join(', ')}.` : '');
+        $('tErr').hidden = false; $('tErr').scrollIntoView({ block: 'center', behavior: 'smooth' }); return;
+      }
+      f.name = $('tName').value.trim() || f.name; f.note = $('tNote').value; f.color = d.color; f.tpl = d.tpl; f.data = r.data;
+      await DB.put('features', f); drawFeatures(); closeSheet();
+    };
     $('tGo').onclick = () => { follow = false; $('btnGps').classList.remove('on'); map.fitBounds(L.latLngBounds(f.coords.map(c => [c[0], c[1]])), { padding: [40, 40] }); closeSheet(); };
-    confirmBtn($('tDel'), 'Toque otra vez para eliminar', async () => { await DB.del('features', f.id); features = features.filter(x => x.id !== f.id); drawFeatures(); refreshSub(); closeSheet(); });
+    confirmBtn($('tDel'), 'Toque otra vez para eliminar', async () => { await deletePhotosOf({ ...f, data: { ...f.data, ...d.data } }); await DB.del('features', f.id); features = features.filter(x => x.id !== f.id); drawFeatures(); refreshSub(); closeSheet(); });
   });
 }
 
@@ -394,7 +434,7 @@ async function showMaps() {
     $('mAdd').onclick = () => $('file').click();
     document.querySelectorAll('.list .item').forEach(b => b.onclick = () => { closeSheet(); openMap(b.dataset.id); });
     if (curMap) confirmBtn($('mDel'), `Toque otra vez: se borran ${features.length} puntos/tracks`, async () => {
-      for (const f of features) await DB.del('features', f.id);
+      for (const f of features) { await deletePhotosOf(f); await DB.del('features', f.id); }
       await DB.del('maps', curMap.id);
       if (overlay) map.removeLayer(overlay); overlay = null; curMap = null; features = []; drawFeatures(); store.set('cur', null);
       $('mapName').textContent = 'Sin plano'; $('mapSub').textContent = 'Toque para cargar un GeoPDF';
@@ -419,11 +459,12 @@ function showList() {
   const pts = features.filter(f => f.type === 'point'), trk = features.filter(f => f.type === 'track');
   sheet(curMap.name, `
     <div class="sec">Exportar</div>
-    <div class="row"><button class="btn primary" data-x="kml">KML</button><button class="btn" data-x="gpx">GPX</button><button class="btn" data-x="csv">CSV CTM12</button></div>
-    <p class="note">KML abre en Google Earth y QGIS; GPX en cualquier GPS; el CSV trae Este y Norte en CTM12 para su base de datos.</p>
+    <div class="row"><button class="btn primary" data-x="zip">Todo con fotos (ZIP)</button></div>
+    <div class="row"><button class="btn" data-x="kml">KML</button><button class="btn" data-x="gpx">GPX</button><button class="btn" data-x="csv">CSV CTM12</button></div>
+    <p class="note">El ZIP trae el CSV (con todos los campos y Este/Norte CTM12), el KML y la carpeta de fotos nombradas por punto. KML abre en Google Earth y QGIS; GPX en cualquier GPS.</p>
     ${needsBackup() ? `<button class="btn" id="bQuick" style="border-color:var(--warn);color:var(--warn)">Hay datos sin respaldar · Crear respaldo</button>` : ''}
     <div class="sec">Puntos (${pts.length})</div>
-    ${pts.length ? `<div class="list">${pts.map(f => { const [E, N] = toCTM(f.lat, f.lon); return `<button class="item" data-id="${f.id}"><span class="sw" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}</b><small>E ${fmtInt(E)} · N ${fmtInt(N)}</small></span></button>`; }).join('')}</div>` : '<p class="empty">Sin puntos. Use el botón Punto o mantenga presionado el mapa.</p>'}
+    ${pts.length ? `<div class="list">${pts.map(f => { const [E, N] = toCTM(f.lat, f.lon); const t = tplById(f.tpl); const first = t?.fields.find(x => x.type !== 'photo'); const extra = first ? fieldText(f, first) : ''; return `<button class="item" data-id="${f.id}"><span class="sw" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}${extra ? ` · ${esc(extra)}` : ''}</b><small>E ${fmtInt(E)} · N ${fmtInt(N)}${t && TPL.length > 1 ? ` · ${esc(t.name)}` : ''}</small></span></button>`; }).join('')}</div>` : '<p class="empty">Sin puntos. Use el botón Punto o mantenga presionado el mapa.</p>'}
     <div class="sec">Tracks (${trk.length})</div>
     ${trk.length ? `<div class="list">${trk.map(f => `<button class="item" data-id="${f.id}"><span class="sw trk" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}</b><small>${fmtDist(trackLen(f.coords))} · ${new Date(f.created).toLocaleDateString('es-CO')}</small></span></button>`).join('')}</div>` : '<p class="empty">Sin tracks. Toque Track para empezar a grabar.</p>'}`, w => {
     w.querySelectorAll('[data-x]').forEach(b => b.onclick = () => exportAs(b.dataset.x));
@@ -435,39 +476,70 @@ $('btnList').onclick = showList;
 
 const xml = s => esc(s);
 const iso = t => new Date(t).toISOString();
-function buildKML() {
+function buildKML(withPhotos) {
   const hex = c => { const h = c.replace('#', ''); return 'ff' + h.slice(4, 6) + h.slice(2, 4) + h.slice(0, 2); };
   const pm = features.map(f => {
     if (f.type === 'point') {
       const [E, N] = toCTM(f.lat, f.lon);
-      return `<Placemark><name>${xml(f.name)}</name><description>${xml(f.note)}</description><TimeStamp><when>${iso(f.created)}</when></TimeStamp>
+      const t = tplById(f.tpl), fx = fieldsByName(f);
+      const rows = Object.entries(fx).filter(([, v]) => v !== '').map(([k, v]) => `<tr><td><b>${xml(k)}</b></td><td>${xml(v)}</td></tr>`).join('');
+      const imgs = withPhotos ? (t?.fields || []).filter(x => x.type === 'photo').flatMap(fd => photoFileNames(f, fd)).map(n => `<img src="fotos/${n}" width="320"><br>`).join('') : '';
+      const desc = `${rows ? `<table>${rows}</table>` : ''}${f.note ? `<p>${xml(f.note)}</p>` : ''}${imgs}`;
+      return `<Placemark><name>${xml(f.name)}</name><description><![CDATA[${desc}]]></description><TimeStamp><when>${iso(f.created)}</when></TimeStamp>
 <Style><IconStyle><color>${hex(f.color)}</color></IconStyle></Style>
-<ExtendedData><Data name="Este_CTM12"><value>${fmtInt(E)}</value></Data><Data name="Norte_CTM12"><value>${fmtInt(N)}</value></Data><Data name="Precision_m"><value>${f.acc != null ? Math.round(f.acc) : ''}</value></Data></ExtendedData>
+<ExtendedData><Data name="Plantilla"><value>${xml(t?.name || '')}</value></Data>${Object.entries(fx).map(([k, v]) => `<Data name="${xml(k)}"><value>${xml(v)}</value></Data>`).join('')}<Data name="Nota"><value>${xml(f.note)}</value></Data><Data name="Este_CTM12"><value>${fmtInt(E)}</value></Data><Data name="Norte_CTM12"><value>${fmtInt(N)}</value></Data><Data name="Precision_m"><value>${f.acc != null ? Math.round(f.acc) : ''}</value></Data></ExtendedData>
 <Point><coordinates>${f.lon},${f.lat}${f.alt != null ? ',' + f.alt : ''}</coordinates></Point></Placemark>`;
     }
-    return `<Placemark><name>${xml(f.name)}</name><description>${xml(f.note)}</description><Style><LineStyle><color>${hex(f.color)}</color><width>3</width></LineStyle></Style>
+    const t = tplById(f.tpl), fx = fieldsByName(f);
+    const rows = Object.entries(fx).filter(([, v]) => v !== '').map(([k, v]) => `<tr><td><b>${xml(k)}</b></td><td>${xml(v)}</td></tr>`).join('');
+    const imgs = withPhotos ? (t?.fields || []).filter(x => x.type === 'photo').flatMap(fd => photoFileNames(f, fd)).map(n => `<img src="fotos/${n}" width="320"><br>`).join('') : '';
+    const desc = `<table><tr><td><b>Longitud</b></td><td>${fmtDist(trackLen(f.coords))}</td></tr><tr><td><b>Duración</b></td><td>${fmtTime(trackDur(f))}</td></tr>${rows}</table>${f.note ? `<p>${xml(f.note)}</p>` : ''}${imgs}`;
+    return `<Placemark><name>${xml(f.name)}</name><description><![CDATA[${desc}]]></description><Style><LineStyle><color>${hex(f.color)}</color><width>3</width></LineStyle></Style>
+<ExtendedData><Data name="Plantilla"><value>${xml(t?.name || '')}</value></Data>${Object.entries(fx).map(([k, v]) => `<Data name="${xml(k)}"><value>${xml(v)}</value></Data>`).join('')}<Data name="Nota"><value>${xml(f.note)}</value></Data><Data name="Longitud_m"><value>${Math.round(trackLen(f.coords))}</value></Data></ExtendedData>
 <LineString><tessellate>1</tessellate><coordinates>${f.coords.map(c => `${c[1]},${c[0]}${c[2] != null ? ',' + c[2] : ''}`).join(' ')}</coordinates></LineString></Placemark>`;
   }).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${xml(curMap.name)}</name>\n${pm}\n</Document></kml>`;
 }
 function buildGPX() {
-  const wpt = features.filter(f => f.type === 'point').map(f => `<wpt lat="${f.lat}" lon="${f.lon}">${f.alt != null ? `<ele>${f.alt}</ele>` : ''}<time>${iso(f.created)}</time><name>${xml(f.name)}</name><desc>${xml(f.note)}</desc></wpt>`).join('\n');
-  const trk = features.filter(f => f.type === 'track').map(f => `<trk><name>${xml(f.name)}</name><desc>${xml(f.note)}</desc><trkseg>${f.coords.map(c => `<trkpt lat="${c[0]}" lon="${c[1]}">${c[2] != null ? `<ele>${c[2]}</ele>` : ''}<time>${iso(c[3])}</time></trkpt>`).join('')}</trkseg></trk>`).join('\n');
+  const gdesc = f => [...Object.entries(fieldsByName(f)).filter(([, v]) => v !== '').map(([k, v]) => `${k}: ${v}`), f.note].filter(Boolean).join('; ');
+  const wpt = features.filter(f => f.type === 'point').map(f => `<wpt lat="${f.lat}" lon="${f.lon}">${f.alt != null ? `<ele>${f.alt}</ele>` : ''}<time>${iso(f.created)}</time><name>${xml(f.name)}</name><desc>${xml(gdesc(f))}</desc></wpt>`).join('\n');
+  const trk = features.filter(f => f.type === 'track').map(f => `<trk><name>${xml(f.name)}</name><desc>${xml(gdesc(f))}</desc><trkseg>${f.coords.map(c => `<trkpt lat="${c[0]}" lon="${c[1]}">${c[2] != null ? `<ele>${c[2]}</ele>` : ''}<time>${iso(c[3])}</time></trkpt>`).join('')}</trkseg></trk>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GeoMerceditas" xmlns="http://www.topografix.com/GPX/1/1">\n${wpt}\n${trk}\n</gpx>`;
 }
 function buildCSV() {
   const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
-  const rows = [['Tipo', 'Nombre', 'Vertice', 'Este_CTM12', 'Norte_CTM12', 'Latitud', 'Longitud', 'Altitud_m', 'Precision_m', 'Fecha', 'Nota']];
+  const cols = exportColumns(features);
+  const rows = [['Tipo', 'Nombre', 'Vertice', 'Este_CTM12', 'Norte_CTM12', 'Latitud', 'Longitud', 'Altitud_m', 'Precision_m', 'Fecha', 'Plantilla', ...cols, 'Nota']];
+  const blank = cols.map(() => '');
   for (const f of features) {
-    if (f.type === 'point') { const [E, N] = toCTM(f.lat, f.lon); rows.push(['Punto', f.name, '', fmtInt(E), fmtInt(N), f.lat.toFixed(7), f.lon.toFixed(7), f.alt != null ? Math.round(f.alt) : '', f.acc != null ? Math.round(f.acc) : '', new Date(f.created).toLocaleString('es-CO'), f.note]); }
-    else f.coords.forEach((c, i) => { const [E, N] = toCTM(c[0], c[1]); rows.push(['Track', f.name, i + 1, fmtInt(E), fmtInt(N), c[0].toFixed(7), c[1].toFixed(7), c[2] != null ? Math.round(c[2]) : '', '', new Date(c[3]).toLocaleString('es-CO'), i ? '' : f.note]); });
+    if (f.type === 'point') { const [E, N] = toCTM(f.lat, f.lon); const fx = fieldsByName(f); rows.push(['Punto', f.name, '', fmtInt(E), fmtInt(N), f.lat.toFixed(7), f.lon.toFixed(7), f.alt != null ? Math.round(f.alt) : '', f.acc != null ? Math.round(f.acc) : '', new Date(f.created).toLocaleString('es-CO'), tplById(f.tpl)?.name || '', ...cols.map(c => fx[c] ?? ''), f.note]); }
+    else { const fx = fieldsByName(f), tn = tplById(f.tpl)?.name || ''; f.coords.forEach((c, i) => { const [E, N] = toCTM(c[0], c[1]); rows.push(['Track', f.name, i + 1, fmtInt(E), fmtInt(N), c[0].toFixed(7), c[1].toFixed(7), c[2] != null ? Math.round(c[2]) : '', '', new Date(c[3]).toLocaleString('es-CO'), tn, ...cols.map(k => fx[k] ?? ''), f.note]); }); }
   }
   return '﻿' + rows.map(r => r.map((v, i) => i >= 3 && i <= 8 ? v : q(v)).join(';')).join('\r\n');
 }
+async function buildZIP() {
+  const zip = new JSZip();
+  zip.file('puntos_y_tracks.csv', buildCSV());
+  zip.file('mapa.kml', buildKML(true));
+  zip.file('tracks.gpx', buildGPX());
+  const dir = zip.folder('fotos');
+  for (const f of features) {
+    const t = tplById(f.tpl);
+    for (const fd of (t?.fields || []).filter(x => x.type === 'photo')) {
+      const names = photoFileNames(f, fd), ids = f.data?.[fd.id] || [];
+      for (let i = 0; i < ids.length; i++) { const p = await DB.get('photos', ids[i]); if (p) dir.file(names[i], p.blob); }
+    }
+  }
+  return zip.generateAsync({ type: 'blob', compression: 'STORE' });
+}
 async function exportAs(kind) {
   if (!features.length) { toast('No hay puntos ni tracks para exportar'); return; }
-  const txt = kind === 'kml' ? buildKML() : kind === 'gpx' ? buildGPX() : buildCSV();
-  const mime = { kml: 'application/vnd.google-earth.kml+xml', gpx: 'application/gpx+xml', csv: 'text/csv' }[kind];
+  let txt;
+  if (kind === 'zip') {
+    const busy = document.createElement('div'); busy.className = 'busy'; busy.textContent = 'Preparando el ZIP…'; document.body.appendChild(busy);
+    try { txt = await buildZIP(); } finally { busy.remove(); }
+  } else txt = kind === 'kml' ? buildKML() : kind === 'gpx' ? buildGPX() : buildCSV();
+  const mime = { kml: 'application/vnd.google-earth.kml+xml', gpx: 'application/gpx+xml', csv: 'text/csv', zip: 'application/zip' }[kind];
   const d = new Date(), stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   const name = `${curMap.name.replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]+/g, '_')}_${stamp}.${kind}`;
   await saveFile(name, txt, mime);
@@ -475,7 +547,8 @@ async function exportAs(kind) {
 async function saveFile(name, txt, mime) {
   if (NATIVE) {
     try {
-      const { uri } = await FS.writeFile({ path: name, data: txt, directory: 'CACHE', encoding: 'utf8' });
+      const opts = typeof txt === 'string' ? { data: txt, encoding: 'utf8' } : { data: (await blobToDataURL(txt)).split(',')[1] };
+      const { uri } = await FS.writeFile({ path: name, directory: 'CACHE', ...opts });
       await SH.share({ title: name, files: [uri], dialogTitle: 'Enviar o guardar ' + name });
     } catch (e) { if (!/cancel/i.test(e?.message || '')) toast('No se pudo compartir: ' + (e?.message || e)); }
     return;
@@ -505,7 +578,9 @@ async function makeBackup() {
     const maps = await DB.all('maps'), feats = await DB.all('features');
     const outMaps = [];
     for (const m of maps) { const { blob, ...rest } = m; outMaps.push({ ...rest, image: await blobToDataURL(blob) }); }
-    const data = JSON.stringify({ app: 'plano-de-campo', version: 1, created: new Date().toISOString(), maps: outMaps, features: feats });
+    const outPh = [];
+    for (const p of await DB.all('photos')) { const { blob, ...rest } = p; outPh.push({ ...rest, image: await blobToDataURL(blob) }); }
+    const data = JSON.stringify({ app: 'plano-de-campo', version: 2, created: new Date().toISOString(), maps: outMaps, features: feats, templates: await DB.all('templates'), photos: outPh, tplDefault: store.get('tplDefault', null), tplDefaultTrack: store.get('tplDefaultTrack', null) });
     const d = new Date(), stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
     busy.remove();
     await saveFile(`Respaldo_GeoMerceditas_${stamp}.json`, data, 'application/json');
@@ -519,6 +594,12 @@ async function restoreBackup(file) {
     if (j.app !== 'plano-de-campo') throw new Error('Este archivo no es un respaldo de GeoMerceditas.');
     for (const m of j.maps || []) { const { image, ...rest } = m; await DB.put('maps', { ...rest, blob: await (await fetch(image)).blob() }); }
     for (const f of j.features || []) await DB.put('features', f);
+    for (const t of j.templates || []) await DB.put('templates', t);
+    for (const p of j.photos || []) { const { image, ...rest } = p; await DB.put('photos', { ...rest, blob: await (await fetch(image)).blob() }); }
+    if (j.tplDefault) store.set('tplDefault', j.tplDefault);
+    if (j.tplDefaultTrack) store.set('tplDefaultTrack', j.tplDefaultTrack);
+    if (j.templates?.length) store.set('tplSeeded', true);
+    await loadTemplates();
     store.set('lastBackup', Date.now());
     closeSheet();
     const id = curMap?.id || j.maps?.[0]?.id; if (id) await openMap(id);
@@ -530,7 +611,7 @@ function backupHtml() {
   return `<div class="sec">Respaldo</div>
     <p class="note" style="${needsBackup() ? 'color:var(--warn);font-weight:600' : ''}">${lastBackupText()}${needsBackup() ? ' Hay datos nuevos sin respaldar.' : ''}</p>
     <div class="row"><button class="btn primary" id="bMake">Crear respaldo</button><button class="btn" id="bRest">Restaurar</button></div>
-    <p class="note">El respaldo guarda todos los planos, puntos y tracks en un solo archivo. Envíelo a su Drive o correo; con Restaurar lo recupera en este u otro teléfono.</p>`;
+    <p class="note">El respaldo guarda planos, puntos, tracks, plantillas y fotos en un solo archivo. Envíelo a su Drive o correo; con Restaurar lo recupera en este u otro teléfono.</p>`;
 }
 function bindBackup() {
   $('bMake').onclick = async () => { await makeBackup(); closeSheet(); };
@@ -540,6 +621,10 @@ function bindBackup() {
 /* ---------- Ajustes ---------- */
 $('btnSettings').onclick = () => {
   sheet('Ajustes', `
+    <div class="sec">Plantillas de campos</div>
+    <p class="note">Puntos nuevos: <b>${esc(tplById(defaultTplId('point'))?.name || '—')}</b> · Tracks nuevos: <b>${esc(tplById(defaultTplId('track'))?.name || '—')}</b></p>
+    <button class="btn primary" id="sTpl">Administrar plantillas</button>
+    <div class="sec">Registro</div>
     <div class="field"><label for="sMode">Botón Punto marca en</label>
       <select id="sMode"><option value="gps">Mi posición GPS</option><option value="mira">La mira del centro del mapa</option></select></div>
     <p class="note">También puede mantener presionado el mapa para poner un punto donde toque.</p>
@@ -550,6 +635,7 @@ $('btnSettings').onclick = () => {
     ${backupHtml()}
     <p class="note">Coordenadas en MAGNA-SIRGAS Origen Nacional (CTM12, EPSG:9377).</p>`, () => {
     bindBackup();
+    $('sTpl').onclick = showTemplates;
     $('sMode').value = pointMode();
     $('sMode').onchange = e => { store.set('pmode', e.target.value); $('cross').hidden = e.target.value !== 'mira'; updCoords(); };
     $('sPrefix').onchange = e => store.set('prefix', e.target.value.trim() || 'P');
@@ -563,6 +649,7 @@ $('btnSettings').onclick = () => {
 (async () => {
   $('cross').hidden = pointMode() !== 'mira';
   try { navigator.storage?.persist?.(); } catch { }
+  await loadTemplates();
   const cur = store.get('cur', null);
   const maps = await DB.all('maps');
   if (cur && maps.find(m => m.id === cur)) await openMap(cur);
