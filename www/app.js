@@ -633,9 +633,7 @@ $('btnSettings').onclick = () => {
     <div class="field"><label for="sOp">Transparencia del plano</label><input id="sOp" type="range" min="0.2" max="1" step="0.05" value="${store.get('opacity', 1)}"></div>
     <label class="toggle" for="sOsm"><span>Mapa base de OpenStreetMap<br><small class="note">Solo con internet</small></span><input type="checkbox" id="sOsm" ${store.get('osm', true) ? 'checked' : ''}></label>
     ${backupHtml()}
-    <p class="note">Coordenadas en MAGNA-SIRGAS Origen Nacional (CTM12, EPSG:9377).</p>
-    <div class="sec">Autorización</div>
-    <div class="kv">Celular ${esc(Gate.info?.dev || '')}<br>${Gate.info?.exp ? 'Autorizado hasta el ' + Gate.fmtExp(Gate.info.exp) : 'Autorización sin vencimiento'}</div>`, () => {
+    <p class="note">Coordenadas en MAGNA-SIRGAS Origen Nacional (CTM12, EPSG:9377).</p>`, () => {
     bindBackup();
     $('sTpl').onclick = showTemplates;
     $('sMode').value = pointMode();
@@ -649,7 +647,6 @@ $('btnSettings').onclick = () => {
 
 /* ---------- Inicio ---------- */
 (async () => {
-  await Gate.ready();
   $('cross').hidden = pointMode() !== 'mira';
   try { navigator.storage?.persist?.(); } catch { }
   await loadTemplates();
