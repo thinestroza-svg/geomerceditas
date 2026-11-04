@@ -1,6 +1,6 @@
 {
   "appId": "co.tomas.planodecampo",
-  "appName": "Plano de Campo",
+  "appName": "GeoMerceditas",
   "webDir": "www",
   "android": { "useLegacyBridge": true, "allowMixedContent": false },
   "server": { "androidScheme": "https" }

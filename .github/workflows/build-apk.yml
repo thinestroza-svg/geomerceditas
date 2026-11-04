@@ -32,11 +32,11 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk ../PlanoDeCampo.apk
+          cp app/build/outputs/apk/release/app-release.apk ../GeoMerceditas.apk
       - name: Publicar versión descargable
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: Plano de Campo 1.0.${{ github.run_number }}
-          body: Descargue PlanoDeCampo.apk desde el celular e instálelo.
-          files: PlanoDeCampo.apk
+          name: GeoMerceditas 1.0.${{ github.run_number }}
+          body: Descargue GeoMerceditas.apk desde el celular e instálelo.
+          files: GeoMerceditas.apk

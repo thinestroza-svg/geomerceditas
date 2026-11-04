@@ -1,2 +1,2 @@
-{"name":"Plano de Campo","short_name":"Plano Campo","start_url":"./index.html","scope":"./","display":"standalone","orientation":"any","background_color":"#1f3a2e","theme_color":"#1f3a2e","lang":"es",
+{"name":"GeoMerceditas","short_name":"GeoMerceditas","start_url":"./index.html","scope":"./","display":"standalone","orientation":"any","background_color":"#1f3a2e","theme_color":"#1f3a2e","lang":"es",
 "icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},{"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}

@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#1f3a2e">
+<meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Plano de Campo</title>
+<title>GeoMerceditas</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -124,9 +124,23 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .pinlbl{position:absolute;left:24px;top:-2px;white-space:nowrap;font:700 12px var(--ui);color:#111;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
 .leaflet-container{font-family:var(--ui)}
+
+/* Franja de marca fija: siempre visible */
+:root{--brand-h:48px}
+.brand{position:fixed;z-index:2600;left:0;right:0;top:0;height:calc(var(--safe-t) + var(--brand-h));
+  padding:var(--safe-t) max(12px,var(--safe-r)) 0 max(12px,var(--safe-l));background:#fff;
+  display:flex;align-items:center;justify-content:center;border-bottom:1px solid #dfe6e2;box-shadow:0 1px 6px rgb(0 0 0/.12)}
+.brand img{height:34px;width:auto;max-width:100%;display:block}
+.top{padding-top:calc(var(--safe-t) + var(--brand-h) + 8px)!important}
+.coords{top:calc(var(--safe-t) + var(--brand-h) + 70px)!important}
+.toast{top:calc(var(--safe-t) + var(--brand-h) + 70px)!important}
+.welcome{padding-top:calc(var(--safe-t) + var(--brand-h) + 24px)!important}
+.sheet{max-height:calc(100% - var(--safe-t) - var(--brand-h) - 12px)!important}
+.leaflet-top{top:calc(var(--safe-t) + var(--brand-h))}
 </style>
 </head>
 <body>
+<header class="brand"><img src="logo-merceditas.png" alt="Corporación Merceditas"></header>
 <div id="map"></div>
 <div class="crosshair" id="cross" hidden></div>
 
@@ -167,7 +181,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <path d="M22 92c12-6 14-30 30-34s22 14 34 6 12-36 12-36" stroke-width="2.5"/>
       <circle cx="60" cy="58" r="7" fill="currentColor"/>
     </svg>
-    <h1>Plano de Campo</h1>
+    <h1>GeoMerceditas</h1>
     <p>Cargue un plano en GeoPDF, vea su posición GPS sobre él, marque puntos, grabe tracks y expórtelos en KML, GPX o CSV con coordenadas CTM12.</p>
     <button class="btn primary" id="btnFirst">Cargar GeoPDF</button>
     <button class="btn" id="btnFirstRestore">Restaurar un respaldo</button>

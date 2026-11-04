@@ -1,5 +1,5 @@
 'use strict';
-/* Plano de Campo — visor de GeoPDF con GPS, puntos, tracks y exportación (KML, GPX, CSV CTM12) */
+/* GeoMerceditas — visor de GeoPDF con GPS, puntos, tracks y exportación (KML, GPX, CSV CTM12) */
 
 proj4.defs('EPSG:9377', '+proj=tmerc +lat_0=4 +lon_0=-73 +k=0.9992 +x_0=5000000 +y_0=2000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
 const toCTM = (lat, lon) => proj4('EPSG:4326', 'EPSG:9377', [lon, lat]);
@@ -311,7 +311,7 @@ $('btnTrack').onclick = async () => {
     if (NATIVE) {
       try { await LN.requestPermissions(); } catch { }
       try {
-        rec.watcher = await BG.addWatcher({ backgroundTitle: 'Grabando track', backgroundMessage: 'Plano de Campo sigue registrando su recorrido', requestPermissions: true, stale: false, distanceFilter: 2 },
+        rec.watcher = await BG.addWatcher({ backgroundTitle: 'Grabando track', backgroundMessage: 'GeoMerceditas sigue registrando su recorrido', requestPermissions: true, stale: false, distanceFilter: 2 },
           (l, err) => { if (err) return nativeErr(err); if (l && rec) { const p = nativeLoc(l); recAdd({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude, t: p.timestamp }); } });
       } catch (e) { nativeErr(e); }
     } else keepAwake();
@@ -453,7 +453,7 @@ function buildKML() {
 function buildGPX() {
   const wpt = features.filter(f => f.type === 'point').map(f => `<wpt lat="${f.lat}" lon="${f.lon}">${f.alt != null ? `<ele>${f.alt}</ele>` : ''}<time>${iso(f.created)}</time><name>${xml(f.name)}</name><desc>${xml(f.note)}</desc></wpt>`).join('\n');
   const trk = features.filter(f => f.type === 'track').map(f => `<trk><name>${xml(f.name)}</name><desc>${xml(f.note)}</desc><trkseg>${f.coords.map(c => `<trkpt lat="${c[0]}" lon="${c[1]}">${c[2] != null ? `<ele>${c[2]}</ele>` : ''}<time>${iso(c[3])}</time></trkpt>`).join('')}</trkseg></trk>`).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Plano de Campo" xmlns="http://www.topografix.com/GPX/1/1">\n${wpt}\n${trk}\n</gpx>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GeoMerceditas" xmlns="http://www.topografix.com/GPX/1/1">\n${wpt}\n${trk}\n</gpx>`;
 }
 function buildCSV() {
   const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
@@ -508,7 +508,7 @@ async function makeBackup() {
     const data = JSON.stringify({ app: 'plano-de-campo', version: 1, created: new Date().toISOString(), maps: outMaps, features: feats });
     const d = new Date(), stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
     busy.remove();
-    await saveFile(`Respaldo_PlanoDeCampo_${stamp}.json`, data, 'application/json');
+    await saveFile(`Respaldo_GeoMerceditas_${stamp}.json`, data, 'application/json');
     store.set('lastBackup', Date.now());
   } finally { busy.remove(); }
 }
@@ -516,7 +516,7 @@ async function restoreBackup(file) {
   const busy = document.createElement('div'); busy.className = 'busy'; busy.textContent = 'Restaurando…'; document.body.appendChild(busy);
   try {
     const j = JSON.parse(await file.text());
-    if (j.app !== 'plano-de-campo') throw new Error('Este archivo no es un respaldo de Plano de Campo.');
+    if (j.app !== 'plano-de-campo') throw new Error('Este archivo no es un respaldo de GeoMerceditas.');
     for (const m of j.maps || []) { const { image, ...rest } = m; await DB.put('maps', { ...rest, blob: await (await fetch(image)).blob() }); }
     for (const f of j.features || []) await DB.put('features', f);
     store.set('lastBackup', Date.now());
