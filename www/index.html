@@ -203,6 +203,23 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .hello .btn{margin-top:8px;min-width:200px;background:#3c8d3f;border-color:#3c8d3f;color:#fff}
 .hello.out{opacity:0;transition:opacity .35s}
 @media (prefers-reduced-motion:reduce){.hello.out{transition:none}}
+
+/* Georreferenciación manual */
+.gr{position:fixed;left:0;right:0;bottom:0;top:calc(var(--safe-t) + var(--brand-h));z-index:1800;background:#2a2f2c;display:flex;flex-direction:column}
+.gr-top{display:flex;align-items:flex-start;gap:8px;background:var(--panel);color:var(--ink);padding:10px max(14px,var(--safe-r)) 10px max(14px,var(--safe-l));border-bottom:1px solid var(--line)}
+.gr-steps{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gr-steps small{color:var(--muted);font-size:13px;line-height:1.4}
+.gr-mapwrap{flex:1;min-height:0;position:relative}
+.gr-map{position:absolute;top:0;right:0;bottom:0;left:0;background:#2a2f2c}
+.gr-cross{z-index:500}
+.gr-cross::before,.gr-cross::after{background:#e0392b;opacity:1}
+.gr-bottom{background:var(--panel);color:var(--ink);border-top:1px solid var(--line);padding:10px max(14px,var(--safe-r)) calc(var(--safe-b) + 10px) max(14px,var(--safe-l));display:flex;flex-direction:column;gap:8px}
+.gr-info{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.gr-info .warn{color:var(--warn);font-weight:600}
+.linkbtn{background:none;border:0;color:var(--accent);font-weight:600;padding:4px 0;margin-left:auto}
+.btn:disabled{opacity:.45}
+.gcp{width:26px;height:26px;border-radius:50%;background:#e0392b;color:#fff;border:2px solid #fff;display:grid;place-items:center;font:700 12px var(--ui);box-shadow:0 1px 4px rgb(0 0 0/.5)}
+.gcp.bad{background:#f39c12}
 /* Franja de marca fija: siempre visible */
 :root{--brand-h:58px}
 .brand{position:fixed;z-index:2600;left:0;right:0;top:0;height:calc(var(--safe-t) + var(--brand-h));
@@ -241,7 +258,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="top">
   <button class="mapsel" id="btnMaps" aria-label="Cambiar plano">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>
-    <span class="txt"><b id="mapName">Sin plano</b><small id="mapSub">Toque para cargar un GeoPDF</small></span>
+    <span class="txt"><b id="mapName">Sin plano</b><small id="mapSub">Toque para cargar un plano</small></span>
   </button>
   <button class="ibtn" id="btnSettings" aria-label="Ajustes">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
@@ -282,8 +299,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <div class="card">
     <img class="grid-ill" src="emblema.png" alt="">
     <h1>GeoMerce</h1>
-    <p>Cargue un plano en GeoPDF, vea su posición GPS sobre él, marque puntos, grabe tracks y expórtelos en KML, GPX o CSV con coordenadas CTM12.</p>
-    <button class="btn primary" id="btnFirst">Cargar GeoPDF</button>
+    <p>Cargue un plano (GeoPDF, PDF o imagen), vea su posición GPS sobre él, marque puntos, grabe tracks y expórtelos en KML, GPX o CSV con coordenadas CTM12.</p>
+    <button class="btn primary" id="btnFirst">Cargar plano</button>
     <button class="btn" id="btnFirstRestore">Restaurar un respaldo</button>
     <p class="note">Los planos y los datos se guardan solo en este teléfono y funcionan sin conexión.</p>
     <p class="note" id="verTxt"></p>
@@ -301,7 +318,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <script src="lib/proj4.js"></script>
 <script src="lib/pdf.min.js"></script>
 <script src="lib/jszip.min.js"></script>
+<script src="crs.js"></script>
 <script src="forms.js"></script>
+<script src="georef.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

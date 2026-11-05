@@ -194,9 +194,17 @@ function fitAffine(px, ll) {
 }
 async function importGeoPDF(file) {
   const buf = await file.arrayBuffer();
-  if (latin1(new Uint8Array(buf.slice(0, 1024))).indexOf("%PDF") < 0) throw new Error("El archivo elegido no es un PDF. Elija el GeoPDF del plano.");
+  if (latin1(new Uint8Array(buf.slice(0, 1024))).indexOf("%PDF") < 0) {
+    const e = new Error("no es PDF");
+    e.noGeo = true;
+    throw e;
+  }
   const geo = findGeo(await pdfText(buf.slice(0)));
-  if (!geo) throw new Error("Este PDF no tiene georreferencia legible (no se encontr\xF3 un GeoPDF ISO 32000). Exp\xF3rtelo desde QGIS o ArcGIS como GeoPDF.");
+  if (!geo) {
+    const e = new Error("Este PDF no tiene georreferencia");
+    e.noGeo = true;
+    throw e;
+  }
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
   const page = await pdf.getPage(1);
   const base = page.getViewport({ scale: 1 });
@@ -699,11 +707,16 @@ function editTrack(f, isNew, draft) {
 async function showMaps() {
   const maps = (await DB.all("maps")).sort((a, b) => b.created - a.created);
   sheet("Planos", `
-    <button class="btn primary" id="mAdd">Cargar GeoPDF</button>
+    <button class="btn primary" id="mAdd">Cargar plano</button>
     ${maps.length ? `<div class="list">${maps.map((m) => `<button class="item ${curMap && m.id === curMap.id ? "cur" : ""}" data-id="${m.id}"><span class="t"><b>${esc(m.name)}</b><small>Cargado ${new Date(m.created).toLocaleDateString("es-CO")}</small></span></button>`).join("")}</div>` : '<p class="empty">A\xFAn no hay planos. Cargue un GeoPDF desde el tel\xE9fono, por ejemplo uno descargado de WhatsApp, Drive o el correo.</p>'}
+    ${curMap && curMap.georef ? `<button class="btn" id="mGeo">Ajustar georreferencia (${curMap.georef.gcps.length} puntos de control)</button>` : ""}
     ${curMap ? `<button class="btn" id="mReload">Volver a cargar el PDF de este plano</button><p class="note">Use esta opci\xF3n si el plano se ve mal ubicado o girado: reemplaza la imagen y conserva sus puntos y tracks.</p>` : ""}
     ${curMap ? `<button class="btn danger" id="mDel">Eliminar el plano actual y sus datos</button>` : ""}`, () => {
     $("mAdd").onclick = () => $("file").click();
+    if ($("mGeo")) $("mGeo").onclick = () => {
+      closeSheet();
+      startManualGeoref({ map: curMap });
+    };
     if ($("mReload")) $("mReload").onclick = () => {
       reloadTarget = curMap;
       $("file").click();
@@ -740,10 +753,20 @@ let reloadTarget = null;
 async function loadPlanFile(file) {
   const busy = document.createElement("div");
   busy.className = "busy";
-  busy.textContent = "Leyendo el GeoPDF\u2026";
+  busy.textContent = "Leyendo el plano\u2026";
   document.body.appendChild(busy);
+  let manual = false;
   try {
-    const m = await importGeoPDF(file);
+    let m;
+    try {
+      m = await importGeoPDF(file);
+    } catch (e) {
+      if (e && e.noGeo) {
+        manual = true;
+        return;
+      }
+      throw e;
+    }
     if (reloadTarget) {
       m.id = reloadTarget.id;
       m.name = reloadTarget.name;
@@ -760,6 +783,12 @@ async function loadPlanFile(file) {
     sheet("No se pudo cargar", `<p>${esc(err.message || err)}</p><button class="btn" id="okE">Entendido</button>`, () => $("okE").onclick = closeSheet);
   } finally {
     busy.remove();
+    if (manual) {
+      const t = reloadTarget;
+      reloadTarget = null;
+      closeSheet();
+      startManualGeoref({ file, target: t }).catch((e) => sheet("No se pudo cargar", `<p>${esc(e.message || e)}</p><button class="btn" id="okE">Entendido</button>`, () => $("okE").onclick = closeSheet));
+    }
   }
 }
 $("file").onchange = (e) => {
@@ -775,8 +804,10 @@ async function openFromUri(url) {
     const bin = atob(r.data), u8 = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
     let name = decodeURIComponent(url.split("/").pop() || "Plano").replace(/^.*[:%]/, "") || "Plano";
-    if (!/\.pdf$/i.test(name)) name = "Plano " + (/* @__PURE__ */ new Date()).toLocaleDateString("es-CO") + ".pdf";
-    loadPlanFile(new File([u8], name, { type: "application/pdf" }));
+    const isPdf = u8[0] === 37 && u8[1] === 80 && u8[2] === 68 && u8[3] === 70;
+    const isPng = u8[0] === 137 && u8[1] === 80, isJpg = u8[0] === 255 && u8[1] === 216;
+    if (!/\.(pdf|jpe?g|png)$/i.test(name)) name = "Plano " + (/* @__PURE__ */ new Date()).toLocaleDateString("es-CO") + (isPdf ? ".pdf" : isPng ? ".png" : ".jpg");
+    loadPlanFile(new File([u8], name, { type: isPdf ? "application/pdf" : isPng ? "image/png" : isJpg ? "image/jpeg" : "" }));
   } catch (e) {
     showErr("Abrir archivo", e);
   }

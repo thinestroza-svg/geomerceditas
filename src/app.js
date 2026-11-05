@@ -156,9 +156,9 @@ function fitAffine(px, ll) { // px:[[x,y]], ll:[[lat,lon]] -> funciones
 
 async function importGeoPDF(file) {
   const buf = await file.arrayBuffer();
-  if (latin1(new Uint8Array(buf.slice(0, 1024))).indexOf('%PDF') < 0) throw new Error('El archivo elegido no es un PDF. Elija el GeoPDF del plano.');
+  if (latin1(new Uint8Array(buf.slice(0, 1024))).indexOf('%PDF') < 0) { const e = new Error('no es PDF'); e.noGeo = true; throw e; }
   const geo = findGeo(await pdfText(buf.slice(0)));
-  if (!geo) throw new Error('Este PDF no tiene georreferencia legible (no se encontró un GeoPDF ISO 32000). Expórtelo desde QGIS o ArcGIS como GeoPDF.');
+  if (!geo) { const e = new Error('Este PDF no tiene georreferencia'); e.noGeo = true; throw e; }
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
   const page = await pdf.getPage(1);
   const base = page.getViewport({ scale: 1 });
@@ -446,11 +446,13 @@ function editTrack(f, isNew, draft) {
 async function showMaps() {
   const maps = (await DB.all('maps')).sort((a, b) => b.created - a.created);
   sheet('Planos', `
-    <button class="btn primary" id="mAdd">Cargar GeoPDF</button>
+    <button class="btn primary" id="mAdd">Cargar plano</button>
     ${maps.length ? `<div class="list">${maps.map(m => `<button class="item ${curMap && m.id === curMap.id ? 'cur' : ''}" data-id="${m.id}"><span class="t"><b>${esc(m.name)}</b><small>Cargado ${new Date(m.created).toLocaleDateString('es-CO')}</small></span></button>`).join('')}</div>` : '<p class="empty">Aún no hay planos. Cargue un GeoPDF desde el teléfono, por ejemplo uno descargado de WhatsApp, Drive o el correo.</p>'}
+    ${curMap && curMap.georef ? `<button class="btn" id="mGeo">Ajustar georreferencia (${curMap.georef.gcps.length} puntos de control)</button>` : ''}
     ${curMap ? `<button class="btn" id="mReload">Volver a cargar el PDF de este plano</button><p class="note">Use esta opción si el plano se ve mal ubicado o girado: reemplaza la imagen y conserva sus puntos y tracks.</p>` : ''}
     ${curMap ? `<button class="btn danger" id="mDel">Eliminar el plano actual y sus datos</button>` : ''}`, () => {
     $('mAdd').onclick = () => $('file').click();
+    if ($('mGeo')) $('mGeo').onclick = () => { closeSheet(); startManualGeoref({ map: curMap }); };
     if ($('mReload')) $('mReload').onclick = () => { reloadTarget = curMap; $('file').click(); };
     document.querySelectorAll('.list .item').forEach(b => b.onclick = () => { closeSheet(); openMap(b.dataset.id); });
     if (curMap) confirmBtn($('mDel'), `Toque otra vez: se borran ${features.length} puntos/tracks`, async () => {
@@ -467,13 +469,19 @@ $('btnFirst').onclick = () => $('file').click();
 $('btnFirstRestore').onclick = () => $('fileBk').click();
 let reloadTarget = null;
 async function loadPlanFile(file) {
-  const busy = document.createElement('div'); busy.className = 'busy'; busy.textContent = 'Leyendo el GeoPDF…'; document.body.appendChild(busy);
+  const busy = document.createElement('div'); busy.className = 'busy'; busy.textContent = 'Leyendo el plano…'; document.body.appendChild(busy);
+  let manual = false;
   try {
-    const m = await importGeoPDF(file);
+    let m;
+    try { m = await importGeoPDF(file); }
+    catch (e) { if (e && e.noGeo) { manual = true; return; } throw e; }
     if (reloadTarget) { m.id = reloadTarget.id; m.name = reloadTarget.name; m.created = reloadTarget.created; reloadTarget = null; }
     await DB.put('maps', m); closeSheet(); $('welcome').hidden = true; await openMap(m.id); toast('Plano cargado'); }
   catch (err) { console.error(err); sheet('No se pudo cargar', `<p>${esc(err.message || err)}</p><button class="btn" id="okE">Entendido</button>`, () => $('okE').onclick = closeSheet); }
-  finally { busy.remove(); }
+  finally {
+    busy.remove();
+    if (manual) { const t = reloadTarget; reloadTarget = null; closeSheet(); startManualGeoref({ file, target: t }).catch(e => sheet('No se pudo cargar', `<p>${esc(e.message || e)}</p><button class="btn" id="okE">Entendido</button>`, () => $('okE').onclick = closeSheet)); }
+  }
 }
 $('file').onchange = e => { const file = e.target.files[0]; e.target.value = ''; if (file) loadPlanFile(file); else reloadTarget = null; };
 async function openFromUri(url) {
@@ -482,8 +490,10 @@ async function openFromUri(url) {
     const r = await FS.readFile({ path: url });
     const bin = atob(r.data), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
     let name = decodeURIComponent(url.split('/').pop() || 'Plano').replace(/^.*[:%]/, '') || 'Plano';
-    if (!/\.pdf$/i.test(name)) name = 'Plano ' + new Date().toLocaleDateString('es-CO') + '.pdf';
-    loadPlanFile(new File([u8], name, { type: 'application/pdf' }));
+    const isPdf = u8[0] === 0x25 && u8[1] === 0x50 && u8[2] === 0x44 && u8[3] === 0x46;
+    const isPng = u8[0] === 0x89 && u8[1] === 0x50, isJpg = u8[0] === 0xFF && u8[1] === 0xD8;
+    if (!/\.(pdf|jpe?g|png)$/i.test(name)) name = 'Plano ' + new Date().toLocaleDateString('es-CO') + (isPdf ? '.pdf' : isPng ? '.png' : '.jpg');
+    loadPlanFile(new File([u8], name, { type: isPdf ? 'application/pdf' : isPng ? 'image/png' : isJpg ? 'image/jpeg' : '' }));
   } catch (e) { showErr('Abrir archivo', e); }
 }
 

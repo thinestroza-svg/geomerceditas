@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "sync": "npm run build && cap sync android",
-    "build": "esbuild src/cap.js --bundle --format=iife --target=chrome61 --outfile=www/cap.js && esbuild src/app.js --target=chrome61 --outfile=www/app.js && esbuild src/forms.js --target=chrome61 --outfile=www/forms.js"
+    "build": "esbuild src/cap.js --bundle --format=iife --target=chrome61 --outfile=www/cap.js && for f in app forms crs georef; do esbuild src/$f.js --target=chrome61 --outfile=www/$f.js || exit 1; done"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "1.2.26",
