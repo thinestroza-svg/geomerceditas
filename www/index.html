@@ -289,7 +289,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <img class="hello-emb" src="emblema.png" alt="">
     <p class="hello-date" id="helloDate"></p>
     <h1 id="helloTitle">¡Buenos días!</h1>
-    <p class="hello-lead">La Corporación Merceditas te desea un feliz día de trabajo.</p>
+    <p class="hello-lead">Merceditas te desea un buen y provechoso día de trabajo.</p>
     <p id="helloMsg">Gracias por cuidar el territorio con cada punto que registras.</p>
     <p class="hello-tip" id="helloTip">Recuerda hidratarte y llevar protector solar.</p>
     <button class="btn primary" id="helloGo">Comenzar</button>
@@ -299,8 +299,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <div class="card">
     <img class="grid-ill" src="emblema.png" alt="">
     <h1>GeoMerce</h1>
-    <p>Cargue un plano (GeoPDF, PDF o imagen), vea su posición GPS sobre él, marque puntos, grabe tracks y expórtelos en KML, GPX o CSV con coordenadas CTM12.</p>
+    <p>Cargue un plano (GeoPDF, PDF o imagen) o trabaje solo con el mapa base. Vea su posición GPS, marque puntos, grabe tracks, importe puntos desde Excel o CSV y expórtelos con coordenadas CTM12.</p>
     <button class="btn primary" id="btnFirst">Cargar plano</button>
+    <button class="btn" id="btnFirstBlank">Trabajar sin plano</button>
+    <button class="btn" id="btnFirstPts">Importar puntos (Excel, CSV o texto)</button>
     <button class="btn" id="btnFirstRestore">Restaurar un respaldo</button>
     <p class="note">Los planos y los datos se guardan solo en este teléfono y funcionan sin conexión.</p>
     <p class="note" id="verTxt"></p>
@@ -309,6 +311,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
 <input type="file" id="file" hidden>
 <input type="file" id="fileBk" hidden>
+<input type="file" id="filePts" hidden>
 <div id="sheets"></div>
 
 <script src="version.js"></script>
@@ -321,6 +324,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <script src="crs.js"></script>
 <script src="forms.js"></script>
 <script src="georef.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script src="importpts.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -227,18 +227,25 @@ async function openMap(id, fit = true) {
   const m = await DB.get('maps', id);
   if (!m) { $('welcome').hidden = false; return; }
   curMap = m; store.set('cur', id);
-  if (overlay) map.removeLayer(overlay);
-  if (objUrl) URL.revokeObjectURL(objUrl);
-  objUrl = URL.createObjectURL(m.blob);
-  overlay = L.imageOverlay.rotated(objUrl, L.latLng(m.tl), L.latLng(m.tr), L.latLng(m.bl), { opacity: store.get('opacity', 1) }).addTo(map);
-  overlay.bringToBack();
-  if (fit) map.fitBounds(L.latLngBounds([m.tl, m.tr, m.bl, m.br]), { padding: [10, 10] });
+  if (overlay) map.removeLayer(overlay); overlay = null;
+  if (objUrl) URL.revokeObjectURL(objUrl); objUrl = null;
+  if (m.blob) {
+    objUrl = URL.createObjectURL(m.blob);
+    overlay = L.imageOverlay.rotated(objUrl, L.latLng(m.tl), L.latLng(m.tr), L.latLng(m.bl), { opacity: store.get('opacity', 1) }).addTo(map);
+    overlay.bringToBack();
+    if (fit) map.fitBounds(L.latLngBounds([m.tl, m.tr, m.bl, m.br]), { padding: [10, 10] });
+  }
   $('mapName').textContent = m.name;
   features = (await DB.byMap(id)).sort((a, b) => a.created - b.created);
   const np = features.filter(f => f.type === 'point').length, nt = features.length - np;
   $('mapSub').textContent = `${np} puntos · ${nt} tracks`;
   $('welcome').hidden = true;
   drawFeatures();
+  if (!m.blob && fit) {
+    const ll = features.flatMap(f => f.type === 'point' ? [[f.lat, f.lon]] : f.coords.map(c => [c[0], c[1]]));
+    if (ll.length) map.fitBounds(L.latLngBounds(ll), { padding: [40, 40], maxZoom: 18 });
+    else if (pos) map.setView([pos.lat, pos.lon], 17);
+  }
 }
 function refreshSub() {
   const np = features.filter(f => f.type === 'point').length, nt = features.length - np;
@@ -301,7 +308,7 @@ function nextName(prefix) {
   return prefix + ((n.length ? Math.max(...n) : 0) + 1);
 }
 async function addPoint(lat, lon, source) {
-  if (!curMap) { toast('Primero cargue un plano'); return; }
+  if (!curMap) { newBlankProject(); return; }
   const f = { id: uid(), mapId: curMap.id, type: 'point', name: nextName(store.get('prefix', 'P')), note: '', color: store.get('pcolor', COLORS[0]),
     tpl: '', data: {}, lat, lon, alt: source === 'gps' ? pos.alt : null, acc: source === 'gps' ? pos.acc : null, source, created: Date.now() };
   features.push(f); await DB.put('features', f); drawFeatures(); refreshSub();
@@ -329,7 +336,7 @@ async function recAdd(p) {
   const { line, watcher, ...save } = rec; DB.put('features', save);
 }
 $('btnTrack').onclick = async () => {
-  if (!curMap) { toast('Primero cargue un plano'); return; }
+  if (!curMap) { newBlankProject(); return; }
   if (!rec) {
     rec = { id: uid(), mapId: curMap.id, type: 'track', name: nextName('Track '), note: '', color: '#e0392b', tpl: '', data: {}, coords: [], created: Date.now(), len: 0 };
     if (NATIVE) {
@@ -446,12 +453,13 @@ function editTrack(f, isNew, draft) {
 async function showMaps() {
   const maps = (await DB.all('maps')).sort((a, b) => b.created - a.created);
   sheet('Planos', `
-    <button class="btn primary" id="mAdd">Cargar plano</button>
-    ${maps.length ? `<div class="list">${maps.map(m => `<button class="item ${curMap && m.id === curMap.id ? 'cur' : ''}" data-id="${m.id}"><span class="t"><b>${esc(m.name)}</b><small>Cargado ${new Date(m.created).toLocaleDateString('es-CO')}</small></span></button>`).join('')}</div>` : '<p class="empty">Aún no hay planos. Cargue un GeoPDF desde el teléfono, por ejemplo uno descargado de WhatsApp, Drive o el correo.</p>'}
+    <div class="row"><button class="btn primary" id="mAdd">Cargar plano</button><button class="btn" id="mBlank">Proyecto sin plano</button></div>
+    ${maps.length ? `<div class="list">${maps.map(m => `<button class="item ${curMap && m.id === curMap.id ? 'cur' : ''}" data-id="${m.id}"><span class="t"><b>${esc(m.name)}</b><small>${m.blank ? 'Sin plano · ' : ''}Creado ${new Date(m.created).toLocaleDateString('es-CO')}</small></span></button>`).join('')}</div>` : '<p class="empty">Aún no hay planos. Cargue un GeoPDF desde el teléfono, por ejemplo uno descargado de WhatsApp, Drive o el correo.</p>'}
     ${curMap && curMap.georef ? `<button class="btn" id="mGeo">Ajustar georreferencia (${curMap.georef.gcps.length} puntos de control)</button>` : ''}
-    ${curMap ? `<button class="btn" id="mReload">Volver a cargar el PDF de este plano</button><p class="note">Use esta opción si el plano se ve mal ubicado o girado: reemplaza la imagen y conserva sus puntos y tracks.</p>` : ''}
+    ${curMap ? (curMap.blank ? `<button class="btn" id="mReload">Agregar un plano a este proyecto</button><p class="note">Carga un GeoPDF, PDF o imagen debajo de los puntos y tracks que ya tiene.</p>` : `<button class="btn" id="mReload">Volver a cargar el plano</button><p class="note">Use esta opción si el plano se ve mal ubicado o girado: reemplaza la imagen y conserva sus puntos y tracks.</p>`) : ''}
     ${curMap ? `<button class="btn danger" id="mDel">Eliminar el plano actual y sus datos</button>` : ''}`, () => {
     $('mAdd').onclick = () => $('file').click();
+    $('mBlank').onclick = () => newBlankProject();
     if ($('mGeo')) $('mGeo').onclick = () => { closeSheet(); startManualGeoref({ map: curMap }); };
     if ($('mReload')) $('mReload').onclick = () => { reloadTarget = curMap; $('file').click(); };
     document.querySelectorAll('.list .item').forEach(b => b.onclick = () => { closeSheet(); openMap(b.dataset.id); });
@@ -467,6 +475,9 @@ async function showMaps() {
 $('btnMaps').onclick = showMaps;
 $('btnFirst').onclick = () => $('file').click();
 $('btnFirstRestore').onclick = () => $('fileBk').click();
+$('btnFirstBlank').onclick = () => newBlankProject();
+$('btnFirstPts').onclick = () => $('filePts').click();
+$('filePts').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importPointsFile(f); };
 let reloadTarget = null;
 async function loadPlanFile(file) {
   const busy = document.createElement('div'); busy.className = 'busy'; busy.textContent = 'Leyendo el plano…'; document.body.appendChild(busy);
@@ -492,6 +503,7 @@ async function openFromUri(url) {
     let name = decodeURIComponent(url.split('/').pop() || 'Plano').replace(/^.*[:%]/, '') || 'Plano';
     const isPdf = u8[0] === 0x25 && u8[1] === 0x50 && u8[2] === 0x44 && u8[3] === 0x46;
     const isPng = u8[0] === 0x89 && u8[1] === 0x50, isJpg = u8[0] === 0xFF && u8[1] === 0xD8;
+    if (!isPdf && !isPng && !isJpg) { importPointsFile(new File([u8], /\.(xlsx|xlsm|xls|ods|csv|txt|tsv)$/i.test(name) ? name : 'Puntos ' + new Date().toLocaleDateString('es-CO') + '.csv')); return; }
     if (!/\.(pdf|jpe?g|png)$/i.test(name)) name = 'Plano ' + new Date().toLocaleDateString('es-CO') + (isPdf ? '.pdf' : isPng ? '.png' : '.jpg');
     loadPlanFile(new File([u8], name, { type: isPdf ? 'application/pdf' : isPng ? 'image/png' : isJpg ? 'image/jpeg' : '' }));
   } catch (e) { showErr('Abrir archivo', e); }
@@ -499,9 +511,11 @@ async function openFromUri(url) {
 
 /* ---------- Lista y exportación ---------- */
 function showList() {
-  if (!curMap) { toast('Primero cargue un plano'); return; }
+  if (!curMap) { newBlankProject(); return; }
   const pts = features.filter(f => f.type === 'point'), trk = features.filter(f => f.type === 'track');
   sheet(curMap.name, `
+    <div class="sec">Importar</div>
+    <button class="btn" id="lImp">Importar puntos (Excel, CSV o texto)</button>
     <div class="sec">Exportar</div>
     <div class="row"><button class="btn primary" data-x="zip">Todo con fotos (ZIP)</button></div>
     <div class="row"><button class="btn" data-x="kml">KML</button><button class="btn" data-x="gpx">GPX</button><button class="btn" data-x="csv">CSV CTM12</button></div>
@@ -512,6 +526,7 @@ function showList() {
     <div class="sec">Tracks (${trk.length})</div>
     ${trk.length ? `<div class="list">${trk.map(f => `<button class="item" data-id="${f.id}"><span class="sw trk" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}</b><small>${fmtDist(trackLen(f.coords))} · ${new Date(f.created).toLocaleDateString('es-CO')}</small></span></button>`).join('')}</div>` : '<p class="empty">Sin tracks. Toque Track para empezar a grabar.</p>'}`, w => {
     w.querySelectorAll('[data-x]').forEach(b => b.onclick = () => exportAs(b.dataset.x));
+    $('lImp').onclick = () => $('filePts').click();
     if ($('bQuick')) $('bQuick').onclick = async () => { await makeBackup(); showList(); };
     w.querySelectorAll('.list .item').forEach(b => b.onclick = () => { const f = features.find(x => x.id === b.dataset.id); f.type === 'point' ? editPoint(f) : editTrack(f); });
   });
@@ -621,7 +636,7 @@ async function makeBackup() {
   try {
     const maps = await DB.all('maps'), feats = await DB.all('features');
     const outMaps = [];
-    for (const m of maps) { const { blob, ...rest } = m; outMaps.push({ ...rest, image: await blobToDataURL(blob) }); }
+    for (const m of maps) { const { blob, ...rest } = m; outMaps.push(blob ? { ...rest, image: await blobToDataURL(blob) } : rest); }
     const outPh = [];
     for (const p of await DB.all('photos')) { const { blob, ...rest } = p; outPh.push({ ...rest, image: await blobToDataURL(blob) }); }
     const data = JSON.stringify({ app: 'plano-de-campo', version: 2, created: new Date().toISOString(), maps: outMaps, features: feats, templates: await DB.all('templates'), photos: outPh, tplDefault: store.get('tplDefault', null), tplDefaultTrack: store.get('tplDefaultTrack', null) });
@@ -636,7 +651,7 @@ async function restoreBackup(file) {
   try {
     const j = JSON.parse(await file.text());
     if (j.app !== 'plano-de-campo') throw new Error('Este archivo no es un respaldo de GeoMerce.');
-    for (const m of j.maps || []) { const { image, ...rest } = m; await DB.put('maps', { ...rest, blob: await (await fetch(image)).blob() }); }
+    for (const m of j.maps || []) { const { image, ...rest } = m; await DB.put('maps', image ? { ...rest, blob: await (await fetch(image)).blob() } : rest); }
     for (const f of j.features || []) await DB.put('features', f);
     for (const t of j.templates || []) await DB.put('templates', t);
     for (const p of j.photos || []) { const { image, ...rest } = p; await DB.put('photos', { ...rest, blob: await (await fetch(image)).blob() }); }
