@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>GeoMerceditas</title>
+<title>GeoMerce</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -112,7 +112,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .welcome .card{max-width:420px;display:flex;flex-direction:column;gap:14px;text-align:center}
 .welcome h1{margin:0;font-size:26px;letter-spacing:-.01em}
 .welcome p{margin:0;color:var(--muted);line-height:1.55}
-.grid-ill{width:120px;height:120px;margin:0 auto}
+.grid-ill{width:120px;height:120px;margin:0 auto;background:#fff;border-radius:50%;padding:6px;box-sizing:border-box}
 
 .toast{position:fixed;z-index:3000;left:50%;transform:translateX(-50%);top:calc(var(--safe-t) + 70px);background:var(--ink);color:var(--bg);
   padding:10px 16px;border-radius:10px;font-weight:600;max-width:90%;text-align:center;box-shadow:0 4px 16px rgb(0 0 0/.3)}
@@ -248,13 +248,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
 <div class="welcome" id="welcome" hidden>
   <div class="card">
-    <svg class="grid-ill" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-      <rect x="10" y="10" width="100" height="100" rx="6" opacity=".35"/>
-      <path d="M43 10v100M77 10v100M10 43h100M10 77h100" opacity=".25"/>
-      <path d="M22 92c12-6 14-30 30-34s22 14 34 6 12-36 12-36" stroke-width="2.5"/>
-      <circle cx="60" cy="58" r="7" fill="currentColor"/>
-    </svg>
-    <h1>GeoMerceditas</h1>
+    <img class="grid-ill" src="emblema.png" alt="">
+    <h1>GeoMerce</h1>
     <p>Cargue un plano en GeoPDF, vea su posición GPS sobre él, marque puntos, grabe tracks y expórtelos en KML, GPX o CSV con coordenadas CTM12.</p>
     <button class="btn primary" id="btnFirst">Cargar GeoPDF</button>
     <button class="btn" id="btnFirstRestore">Restaurar un respaldo</button>

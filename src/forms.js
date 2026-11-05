@@ -1,5 +1,5 @@
 'use strict';
-/* GeoMerceditas — plantillas de campos (tipo Memento): definición, formulario, fotos y valores para exportar */
+/* GeoMerce — plantillas de campos (tipo Memento): definición, formulario, fotos y valores para exportar */
 
 const FIELD_TYPES = {
   text: 'Texto corto', textarea: 'Texto largo', int: 'Número entero', num: 'Número decimal',
@@ -34,6 +34,7 @@ async function loadTemplates() {
     ] };
     for (const t of [t1, t2, t3]) await DB.put('templates', t);
     store.set('tplSeeded', true); store.set('tplDefault', t2.id); store.set('tplDefaultTrack', t3.id);
+    store.set('dirty', 0); // las plantillas de ejemplo no cuentan como datos sin respaldar
     TPL = [t1, t2, t3];
   }
 }

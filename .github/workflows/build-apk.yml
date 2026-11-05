@@ -35,11 +35,11 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk ../GeoMerceditas.apk
+          cp app/build/outputs/apk/release/app-release.apk ../GeoMerce.apk
       - name: Publicar versión descargable
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: GeoMerceditas 1.0.${{ github.run_number }}
-          body: Descargue GeoMerceditas.apk desde el celular e instálelo.
-          files: GeoMerceditas.apk
+          name: GeoMerce 1.0.${{ github.run_number }}
+          body: Descargue GeoMerce.apk desde el celular e instálelo.
+          files: GeoMerce.apk

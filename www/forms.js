@@ -44,6 +44,7 @@ async function loadTemplates() {
     store.set("tplSeeded", true);
     store.set("tplDefault", t2.id);
     store.set("tplDefaultTrack", t3.id);
+    store.set("dirty", 0);
     TPL = [t1, t2, t3];
   }
 }

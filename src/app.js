@@ -1,5 +1,5 @@
 'use strict';
-/* GeoMerceditas — visor de GeoPDF con GPS, puntos, tracks y exportación (KML, GPX, CSV CTM12) */
+/* GeoMerce — visor de GeoPDF con GPS, puntos, tracks y exportación (KML, GPX, CSV CTM12) */
 
 proj4.defs('EPSG:9377', '+proj=tmerc +lat_0=4 +lon_0=-73 +k=0.9992 +x_0=5000000 +y_0=2000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
 const toCTM = (lat, lon) => proj4('EPSG:4326', 'EPSG:9377', [lon, lat]);
@@ -334,7 +334,7 @@ $('btnTrack').onclick = async () => {
     if (NATIVE) {
       try { await LN.requestPermissions(); } catch { }
       try {
-        rec.watcher = await BG.addWatcher({ backgroundTitle: 'Grabando track', backgroundMessage: 'GeoMerceditas sigue registrando su recorrido', requestPermissions: true, stale: false, distanceFilter: 2 },
+        rec.watcher = await BG.addWatcher({ backgroundTitle: 'Grabando track', backgroundMessage: 'GeoMerce sigue registrando su recorrido', requestPermissions: true, stale: false, distanceFilter: 2 },
           (l, err) => { if (err) return nativeErr(err); if (l && rec) { const p = nativeLoc(l); recAdd({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude, t: p.timestamp }); } });
       } catch (e) { nativeErr(e); }
     } else keepAwake();
@@ -531,7 +531,7 @@ function buildGPX() {
   const gdesc = f => [...Object.entries(fieldsByName(f)).filter(([, v]) => v !== '').map(([k, v]) => `${k}: ${v}`), f.note].filter(Boolean).join('; ');
   const wpt = features.filter(f => f.type === 'point').map(f => `<wpt lat="${f.lat}" lon="${f.lon}">${f.alt != null ? `<ele>${f.alt}</ele>` : ''}<time>${iso(f.created)}</time><name>${xml(f.name)}</name><desc>${xml(gdesc(f))}</desc></wpt>`).join('\n');
   const trk = features.filter(f => f.type === 'track').map(f => `<trk><name>${xml(f.name)}</name><desc>${xml(gdesc(f))}</desc><trkseg>${f.coords.map(c => `<trkpt lat="${c[0]}" lon="${c[1]}">${c[2] != null ? `<ele>${c[2]}</ele>` : ''}<time>${iso(c[3])}</time></trkpt>`).join('')}</trkseg></trk>`).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GeoMerceditas" xmlns="http://www.topografix.com/GPX/1/1">\n${wpt}\n${trk}\n</gpx>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GeoMerce" xmlns="http://www.topografix.com/GPX/1/1">\n${wpt}\n${trk}\n</gpx>`;
 }
 function buildCSV() {
   const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
@@ -610,7 +610,7 @@ async function makeBackup() {
     const data = JSON.stringify({ app: 'plano-de-campo', version: 2, created: new Date().toISOString(), maps: outMaps, features: feats, templates: await DB.all('templates'), photos: outPh, tplDefault: store.get('tplDefault', null), tplDefaultTrack: store.get('tplDefaultTrack', null) });
     const d = new Date(), stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
     busy.remove();
-    await saveFile(`Respaldo_GeoMerceditas_${stamp}.json`, data, 'application/json');
+    await saveFile(`Respaldo_GeoMerce_${stamp}.json`, data, 'application/json');
     store.set('lastBackup', Date.now());
   } finally { busy.remove(); }
 }
@@ -618,7 +618,7 @@ async function restoreBackup(file) {
   const busy = document.createElement('div'); busy.className = 'busy'; busy.textContent = 'Restaurando…'; document.body.appendChild(busy);
   try {
     const j = JSON.parse(await file.text());
-    if (j.app !== 'plano-de-campo') throw new Error('Este archivo no es un respaldo de GeoMerceditas.');
+    if (j.app !== 'plano-de-campo') throw new Error('Este archivo no es un respaldo de GeoMerce.');
     for (const m of j.maps || []) { const { image, ...rest } = m; await DB.put('maps', { ...rest, blob: await (await fetch(image)).blob() }); }
     for (const f of j.features || []) await DB.put('features', f);
     for (const t of j.templates || []) await DB.put('templates', t);
@@ -661,7 +661,7 @@ $('btnSettings').onclick = () => {
     <label class="toggle" for="sOsm"><span>Mapa base de OpenStreetMap<br><small class="note">Solo con internet</small></span><input type="checkbox" id="sOsm" ${store.get('osm', true) ? 'checked' : ''}></label>
     ${backupHtml()}
     <p class="note">Coordenadas en MAGNA-SIRGAS Origen Nacional (CTM12, EPSG:9377).</p>
-    <p class="note">GeoMerceditas versión ${esc(window.APP_VERSION || 'local')}</p>`, () => {
+    <p class="note">GeoMerce versión ${esc(window.APP_VERSION || 'local')}</p>`, () => {
     bindBackup();
     $('sTpl').onclick = showTemplates;
     $('sMode').value = pointMode();

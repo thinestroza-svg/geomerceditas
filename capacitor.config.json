@@ -1,6 +1,6 @@
 {
   "appId": "co.tomas.planodecampo",
-  "appName": "GeoMerceditas",
+  "appName": "GeoMerce",
   "webDir": "www",
   "android": { "useLegacyBridge": true, "allowMixedContent": false },
   "server": { "androidScheme": "https" }
