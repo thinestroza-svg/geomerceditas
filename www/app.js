@@ -4,7 +4,27 @@ proj4.defs("EPSG:9377", "+proj=tmerc +lat_0=4 +lon_0=-73 +k=0.9992 +x_0=5000000 
 const toCTM = (lat, lon) => proj4("EPSG:4326", "EPSG:9377", [lon, lat]);
 pdfjsLib.GlobalWorkerOptions.workerSrc = "lib/pdf.worker.min.js";
 const NATIVE = !!((_b = (_a = window.Capacitor) == null ? void 0 : _a.isNativePlatform) == null ? void 0 : _b.call(_a));
-const plug = (n) => NATIVE ? window.Capacitor.registerPlugin(n) : null;
+function plug(n) {
+  if (!NATIVE) return null;
+  const C = window.Capacitor;
+  try {
+    if (typeof C.registerPlugin === "function") return C.registerPlugin(n);
+  } catch (e) {
+    console.warn(e);
+  }
+  const h = (C.PluginHeaders || []).find((x) => x.name === n);
+  if (!h) return null;
+  const o = {};
+  for (const m of h.methods || []) {
+    if (m.rtype === "callback") o[m.name] = (opts, cb) => Promise.resolve(C.nativeCallback(n, m.name, opts || {}, cb));
+    else o[m.name] = (opts) => C.nativePromise(n, m.name, opts || {});
+  }
+  o.addListener = (ev, cb) => {
+    const id = C.addListener(n, ev, cb);
+    return Promise.resolve({ remove: () => C.removeListener(n, id, ev, cb) });
+  };
+  return o;
+}
 const BG = plug("BackgroundGeolocation"), FS = plug("Filesystem"), SH = plug("Share"), LN = plug("LocalNotifications"), APP = plug("App");
 const $ = (id) => document.getElementById(id);
 const COLORS = ["#e0392b", "#f39c12", "#f1d200", "#27ae60", "#1d64d8", "#8e44ad", "#ffffff", "#222222"];
@@ -1022,7 +1042,8 @@ $("btnSettings").onclick = () => {
     <div class="field"><label for="sOp">Transparencia del plano</label><input id="sOp" type="range" min="0.2" max="1" step="0.05" value="${store.get("opacity", 1)}"></div>
     <label class="toggle" for="sOsm"><span>Mapa base de OpenStreetMap<br><small class="note">Solo con internet</small></span><input type="checkbox" id="sOsm" ${store.get("osm", true) ? "checked" : ""}></label>
     ${backupHtml()}
-    <p class="note">Coordenadas en MAGNA-SIRGAS Origen Nacional (CTM12, EPSG:9377).</p>`, () => {
+    <p class="note">Coordenadas en MAGNA-SIRGAS Origen Nacional (CTM12, EPSG:9377).</p>
+    <p class="note">GeoMerceditas versi\xF3n ${esc(window.APP_VERSION || "local")}</p>`, () => {
     bindBackup();
     $("sTpl").onclick = showTemplates;
     $("sMode").value = pointMode();
@@ -1119,3 +1140,7 @@ $("fileBk").onchange = (e) => {
 window.__test = { importGeoPDF, findGeo, pdfText, buildKML, buildGPX, buildCSV, get features() {
   return features;
 } };
+try {
+  $("verTxt").textContent = "Versi\xF3n " + (window.APP_VERSION || "local");
+} catch (e) {
+}

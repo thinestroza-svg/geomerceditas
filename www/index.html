@@ -210,7 +210,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   }
   window.__diag=bar;
   window.addEventListener('error',function(e){if(!e.message)return;bar('Error: '+(e.message||e)+(e.filename?' ('+e.filename.split('/').pop()+':'+e.lineno+')':''))},true);
-  setTimeout(function(){ if(!window.__appStarted) bar('La app no arranco. Navegador: '+navigator.userAgent); },5000);
+  setTimeout(function(){ if(!window.__appStarted) bar('La app no arranco. Versión '+(window.APP_VERSION||'?')+'. Navegador: '+navigator.userAgent); },5000);
 })();
 </script>
 <header class="brand"><img src="logo-merceditas.png" alt="Corporación Merceditas"><p class="brand-contact"><a href="https://corporacionmerceditas.org" target="_blank" rel="noopener">corporacionmerceditas.org</a></p></header>
@@ -259,6 +259,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <button class="btn primary" id="btnFirst">Cargar GeoPDF</button>
     <button class="btn" id="btnFirstRestore">Restaurar un respaldo</button>
     <p class="note">Los planos y los datos se guardan solo en este teléfono y funcionan sin conexión.</p>
+    <p class="note" id="verTxt"></p>
   </div>
 </div>
 
@@ -266,6 +267,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <input type="file" id="fileBk" hidden>
 <div id="sheets"></div>
 
+<script src="version.js"></script>
 <script src="cap.js"></script>
 <script src="lib/leaflet.js"></script>
 <script src="lib/Leaflet.ImageOverlay.Rotated.js"></script>

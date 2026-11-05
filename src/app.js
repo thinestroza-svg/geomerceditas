@@ -7,7 +7,21 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
 
 /* App nativa (Android, Capacitor) o navegador */
 const NATIVE = !!window.Capacitor?.isNativePlatform?.();
-const plug = n => NATIVE ? window.Capacitor.registerPlugin(n) : null;
+/* Conexión con plugins nativos: usa registerPlugin si existe; si no, la construye con PluginHeaders del puente Android */
+function plug(n) {
+  if (!NATIVE) return null;
+  const C = window.Capacitor;
+  try { if (typeof C.registerPlugin === 'function') return C.registerPlugin(n); } catch (e) { console.warn(e); }
+  const h = (C.PluginHeaders || []).find(x => x.name === n);
+  if (!h) return null;
+  const o = {};
+  for (const m of h.methods || []) {
+    if (m.rtype === 'callback') o[m.name] = (opts, cb) => Promise.resolve(C.nativeCallback(n, m.name, opts || {}, cb));
+    else o[m.name] = opts => C.nativePromise(n, m.name, opts || {});
+  }
+  o.addListener = (ev, cb) => { const id = C.addListener(n, ev, cb); return Promise.resolve({ remove: () => C.removeListener(n, id, ev, cb) }); };
+  return o;
+}
 const BG = plug('BackgroundGeolocation'), FS = plug('Filesystem'), SH = plug('Share'), LN = plug('LocalNotifications'), APP = plug('App');
 
 const $ = id => document.getElementById(id);
@@ -646,7 +660,8 @@ $('btnSettings').onclick = () => {
     <div class="field"><label for="sOp">Transparencia del plano</label><input id="sOp" type="range" min="0.2" max="1" step="0.05" value="${store.get('opacity', 1)}"></div>
     <label class="toggle" for="sOsm"><span>Mapa base de OpenStreetMap<br><small class="note">Solo con internet</small></span><input type="checkbox" id="sOsm" ${store.get('osm', true) ? 'checked' : ''}></label>
     ${backupHtml()}
-    <p class="note">Coordenadas en MAGNA-SIRGAS Origen Nacional (CTM12, EPSG:9377).</p>`, () => {
+    <p class="note">Coordenadas en MAGNA-SIRGAS Origen Nacional (CTM12, EPSG:9377).</p>
+    <p class="note">GeoMerceditas versión ${esc(window.APP_VERSION || 'local')}</p>`, () => {
     bindBackup();
     $('sTpl').onclick = showTemplates;
     $('sMode').value = pointMode();
@@ -687,3 +702,4 @@ window.__appStarted = true;
 })();
 $('fileBk').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) restoreBackup(f); };
 window.__test = { importGeoPDF, findGeo, pdfText, buildKML, buildGPX, buildCSV, get features() { return features; } };
+try { $('verTxt').textContent = 'Versión ' + (window.APP_VERSION || 'local'); } catch (e) { }

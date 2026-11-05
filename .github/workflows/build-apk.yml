@@ -23,7 +23,9 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
       - name: Preparar la app web (compatible con WebView antiguos)
-        run: npm run build
+        run: |
+          npm run build
+          echo "window.APP_VERSION='1.0.${{ github.run_number }}';" > www/version.js
       - name: Copiar la app web al proyecto Android
         run: npx cap sync android
       - name: Compilar
