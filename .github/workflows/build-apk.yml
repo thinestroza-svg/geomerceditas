@@ -22,6 +22,8 @@ jobs:
           java-version: 17
       - name: Instalar dependencias
         run: npm ci
+      - name: Preparar la app web (compatible con WebView antiguos)
+        run: npm run build
       - name: Copiar la app web al proyecto Android
         run: npx cap sync android
       - name: Compilar
