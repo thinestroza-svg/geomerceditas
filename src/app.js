@@ -181,7 +181,8 @@ async function importGeoPDF(file) {
   const px = [], ll = [];
   for (let i = 0; i + 1 < geo.lpts.length && i + 1 < geo.gpts.length; i += 2) {
     const u = geo.lpts[i], v = geo.lpts[i + 1];
-    const X = Math.min(bb[0], bb[2]) + u * bw, Y = Math.min(bb[1], bb[3]) + v * bh;
+    // LPTS son relativos al BBox tal como viene (ArcMap lo declara de arriba hacia abajo)
+    const X = bb[0] + u * (bb[2] - bb[0]), Y = bb[1] + v * (bb[3] - bb[1]);
     const p = vp.convertToViewportPoint(X, Y);
     px.push([p[0] - x0, p[1] - y0]); ll.push([geo.gpts[i], geo.gpts[i + 1]]);
   }
@@ -447,8 +448,10 @@ async function showMaps() {
   sheet('Planos', `
     <button class="btn primary" id="mAdd">Cargar GeoPDF</button>
     ${maps.length ? `<div class="list">${maps.map(m => `<button class="item ${curMap && m.id === curMap.id ? 'cur' : ''}" data-id="${m.id}"><span class="t"><b>${esc(m.name)}</b><small>Cargado ${new Date(m.created).toLocaleDateString('es-CO')}</small></span></button>`).join('')}</div>` : '<p class="empty">Aún no hay planos. Cargue un GeoPDF desde el teléfono, por ejemplo uno descargado de WhatsApp, Drive o el correo.</p>'}
+    ${curMap ? `<button class="btn" id="mReload">Volver a cargar el PDF de este plano</button><p class="note">Use esta opción si el plano se ve mal ubicado o girado: reemplaza la imagen y conserva sus puntos y tracks.</p>` : ''}
     ${curMap ? `<button class="btn danger" id="mDel">Eliminar el plano actual y sus datos</button>` : ''}`, () => {
     $('mAdd').onclick = () => $('file').click();
+    if ($('mReload')) $('mReload').onclick = () => { reloadTarget = curMap; $('file').click(); };
     document.querySelectorAll('.list .item').forEach(b => b.onclick = () => { closeSheet(); openMap(b.dataset.id); });
     if (curMap) confirmBtn($('mDel'), `Toque otra vez: se borran ${features.length} puntos/tracks`, async () => {
       for (const f of features) { await deletePhotosOf(f); await DB.del('features', f.id); }
@@ -462,13 +465,17 @@ async function showMaps() {
 $('btnMaps').onclick = showMaps;
 $('btnFirst').onclick = () => $('file').click();
 $('btnFirstRestore').onclick = () => $('fileBk').click();
+let reloadTarget = null;
 async function loadPlanFile(file) {
   const busy = document.createElement('div'); busy.className = 'busy'; busy.textContent = 'Leyendo el GeoPDF…'; document.body.appendChild(busy);
-  try { const m = await importGeoPDF(file); await DB.put('maps', m); closeSheet(); $('welcome').hidden = true; await openMap(m.id); toast('Plano cargado'); }
+  try {
+    const m = await importGeoPDF(file);
+    if (reloadTarget) { m.id = reloadTarget.id; m.name = reloadTarget.name; m.created = reloadTarget.created; reloadTarget = null; }
+    await DB.put('maps', m); closeSheet(); $('welcome').hidden = true; await openMap(m.id); toast('Plano cargado'); }
   catch (err) { console.error(err); sheet('No se pudo cargar', `<p>${esc(err.message || err)}</p><button class="btn" id="okE">Entendido</button>`, () => $('okE').onclick = closeSheet); }
   finally { busy.remove(); }
 }
-$('file').onchange = e => { const file = e.target.files[0]; e.target.value = ''; if (file) loadPlanFile(file); };
+$('file').onchange = e => { const file = e.target.files[0]; e.target.value = ''; if (file) loadPlanFile(file); else reloadTarget = null; };
 async function openFromUri(url) {
   if (!url || !/^(content|file):/i.test(url)) return;
   try {
