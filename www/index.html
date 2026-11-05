@@ -182,6 +182,27 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .sel{user-select:all;word-break:break-all;color:var(--ink)}
 
 .errbar{position:fixed;z-index:3600;left:0;right:0;bottom:0;background:#c2362b;color:#fff;font:600 13px/1.4 var(--ui);padding:10px max(14px,var(--safe-r)) calc(var(--safe-b) + 10px) max(14px,var(--safe-l))}
+
+.tplpick{cursor:default}
+.tplpick .pickbtn{background:none;border:0;padding:0;margin:0;text-align:left;flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;color:inherit;font:inherit;cursor:pointer}
+.tplpick .pickbtn b{white-space:normal}
+.tplpick .pickbtn small{font:12px var(--mono);color:var(--muted);line-height:1.5}
+.btn.sm{padding:8px 12px;font-size:14px;flex:none}
+/* Bienvenida al abrir la app (debajo de la franja del logo) */
+.hello{position:fixed;left:0;right:0;bottom:0;top:calc(var(--safe-t) + var(--brand-h));z-index:2500;overflow:auto;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#eaf4e3 0%,#e3f1f3 100%);color:#17322a;
+  padding:24px max(24px,var(--safe-r)) calc(var(--safe-b) + 24px) max(24px,var(--safe-l))}
+.hello-card{max-width:380px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.hello-emb{width:110px;height:110px;background:#fff;border-radius:50%;padding:6px;box-sizing:border-box;box-shadow:0 6px 20px rgb(31 90 70/.18)}
+.hello h1{margin:0;font-size:30px;letter-spacing:-.01em;color:#2f6b3a;text-wrap:balance}
+.hello p{margin:0;line-height:1.5;color:#2d4a40}
+.hello-date{font:600 12px var(--ui);letter-spacing:.08em;text-transform:uppercase;color:#3f8f9c!important}
+.hello-lead{font-size:18px;font-weight:600;color:#17322a!important}
+.hello-tip{font-size:14px;background:rgb(255 255 255/.7);border-radius:12px;padding:10px 14px}
+.hello .btn{margin-top:8px;min-width:200px;background:#3c8d3f;border-color:#3c8d3f;color:#fff}
+.hello.out{opacity:0;transition:opacity .35s}
+@media (prefers-reduced-motion:reduce){.hello.out{transition:none}}
 /* Franja de marca fija: siempre visible */
 :root{--brand-h:58px}
 .brand{position:fixed;z-index:2600;left:0;right:0;top:0;height:calc(var(--safe-t) + var(--brand-h));
@@ -246,6 +267,17 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Lista</button>
 </nav>
 
+<div class="hello" id="hello" role="dialog" aria-label="Bienvenida">
+  <div class="hello-card">
+    <img class="hello-emb" src="emblema.png" alt="">
+    <p class="hello-date" id="helloDate"></p>
+    <h1 id="helloTitle">¡Buenos días!</h1>
+    <p class="hello-lead">La Corporación Merceditas te desea un feliz día de trabajo.</p>
+    <p id="helloMsg">Gracias por cuidar el territorio con cada punto que registras.</p>
+    <p class="hello-tip" id="helloTip">Recuerda hidratarte y llevar protector solar.</p>
+    <button class="btn primary" id="helloGo">Comenzar</button>
+  </div>
+</div>
 <div class="welcome" id="welcome" hidden>
   <div class="card">
     <img class="grid-ill" src="emblema.png" alt="">

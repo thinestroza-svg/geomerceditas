@@ -303,9 +303,9 @@ function nextName(prefix) {
 async function addPoint(lat, lon, source) {
   if (!curMap) { toast('Primero cargue un plano'); return; }
   const f = { id: uid(), mapId: curMap.id, type: 'point', name: nextName(store.get('prefix', 'P')), note: '', color: store.get('pcolor', COLORS[0]),
-    tpl: defaultTplId(), data: {}, lat, lon, alt: source === 'gps' ? pos.alt : null, acc: source === 'gps' ? pos.acc : null, source, created: Date.now() };
+    tpl: '', data: {}, lat, lon, alt: source === 'gps' ? pos.alt : null, acc: source === 'gps' ? pos.acc : null, source, created: Date.now() };
   features.push(f); await DB.put('features', f); drawFeatures(); refreshSub();
-  editPoint(f, true);
+  withTemplate('point', id => { f.tpl = id; editPoint(f, true); });
 }
 $('btnPoint').onclick = () => {
   if (pointMode() === 'mira') { const c = map.getCenter(); addPoint(c.lat, c.lng, 'mira'); }
@@ -331,7 +331,7 @@ async function recAdd(p) {
 $('btnTrack').onclick = async () => {
   if (!curMap) { toast('Primero cargue un plano'); return; }
   if (!rec) {
-    rec = { id: uid(), mapId: curMap.id, type: 'track', name: nextName('Track '), note: '', color: '#e0392b', tpl: defaultTplId('track'), data: {}, coords: [], created: Date.now(), len: 0 };
+    rec = { id: uid(), mapId: curMap.id, type: 'track', name: nextName('Track '), note: '', color: '#e0392b', tpl: '', data: {}, coords: [], created: Date.now(), len: 0 };
     if (NATIVE) {
       try { await LN.requestPermissions(); } catch { }
       try {
@@ -349,7 +349,7 @@ $('btnTrack').onclick = async () => {
     if (r.watcher) { try { await BG.removeWatcher({ id: r.watcher }); } catch { } delete r.watcher; }
     $('btnTrack').classList.remove('rec'); $('trkLbl').textContent = 'Track'; $('recinfo').hidden = true;
     if (r.coords.length < 2) { await DB.del('features', r.id); toast('Track descartado: muy pocos puntos'); return; }
-    features.push(r); await DB.put('features', r); drawFeatures(); refreshSub(); editTrack(r, true);
+    features.push(r); await DB.put('features', r); drawFeatures(); refreshSub(); withTemplate('track', id => { r.tpl = id; editTrack(r, true); });
   }
 };
 
@@ -379,10 +379,10 @@ function editPoint(f, isNew, draft) {
   const [E, N] = toCTM(f.lat, f.lon);
   const src = { gps: 'GPS', mira: 'mira del mapa', mapa: 'toque en el mapa' }[f.source] || f.source;
   // borrador: lo que se lleva escrito (para cambiar de plantilla sin perderlo)
-  const d = draft || { name: f.name, note: f.note, color: f.color, tpl: tplById(f.tpl) ? f.tpl : defaultTplId(), data: JSON.parse(JSON.stringify(f.data || {})) };
+  const d = draft || { name: f.name, note: f.note, color: f.color, tpl: tplById(f.tpl) ? f.tpl : '', data: JSON.parse(JSON.stringify(f.data || {})) };
   const t = tplById(d.tpl);
   sheet(isNew ? 'Punto nuevo' : 'Punto', `
-    ${TPL.length > 1 ? `<div class="field"><label for="pTpl">Plantilla</label><select id="pTpl">${TPL.map(x => `<option value="${x.id}" ${x.id === d.tpl ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>` : ''}
+    <div class="field"><label for="pTpl">Plantilla</label><select id="pTpl">${tplOptions(d.tpl)}</select></div>
     <div class="field"><label for="pName">Nombre</label><input id="pName" value="${esc(d.name)}" autocomplete="off"></div>
     ${formHtml(t, d.data)}
     <div class="field"><label for="pNote">Nota</label><textarea id="pNote" placeholder="Observaciones generales">${esc(d.note)}</textarea></div>
@@ -411,11 +411,11 @@ function editPoint(f, isNew, draft) {
 }
 const trackDur = f => f.coords.length > 1 ? (f.coords[f.coords.length - 1][3] - f.coords[0][3]) / 1000 : 0;
 function editTrack(f, isNew, draft) {
-  const d = draft || { name: f.name, note: f.note, color: f.color, tpl: tplById(f.tpl) ? f.tpl : defaultTplId('track'), data: JSON.parse(JSON.stringify(f.data || {})) };
+  const d = draft || { name: f.name, note: f.note, color: f.color, tpl: tplById(f.tpl) ? f.tpl : '', data: JSON.parse(JSON.stringify(f.data || {})) };
   const t = tplById(d.tpl);
   const [E0, N0] = toCTM(f.coords[0][0], f.coords[0][1]), last = f.coords[f.coords.length - 1], [E1, N1] = toCTM(last[0], last[1]);
   sheet(isNew ? 'Track nuevo' : 'Track', `
-    ${TPL.length > 1 ? `<div class="field"><label for="tTpl">Plantilla</label><select id="tTpl">${TPL.map(x => `<option value="${x.id}" ${x.id === d.tpl ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>` : ''}
+    <div class="field"><label for="tTpl">Plantilla</label><select id="tTpl">${tplOptions(d.tpl)}</select></div>
     <div class="field"><label for="tName">Nombre</label><input id="tName" value="${esc(d.name)}" autocomplete="off"></div>
     ${formHtml(t, d.data)}
     <div class="field"><label for="tNote">Nota</label><textarea id="tNote" placeholder="Observaciones generales">${esc(d.note)}</textarea></div>
@@ -498,7 +498,7 @@ function showList() {
     <p class="note">El ZIP trae el CSV (con todos los campos y Este/Norte CTM12), el KML y la carpeta de fotos nombradas por punto. KML abre en Google Earth y QGIS; GPX en cualquier GPS.</p>
     ${needsBackup() ? `<button class="btn" id="bQuick" style="border-color:var(--warn);color:var(--warn)">Hay datos sin respaldar · Crear respaldo</button>` : ''}
     <div class="sec">Puntos (${pts.length})</div>
-    ${pts.length ? `<div class="list">${pts.map(f => { const [E, N] = toCTM(f.lat, f.lon); const t = tplById(f.tpl); const first = t?.fields.find(x => x.type !== 'photo'); const extra = first ? fieldText(f, first) : ''; return `<button class="item" data-id="${f.id}"><span class="sw" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}${extra ? ` · ${esc(extra)}` : ''}</b><small>E ${fmtInt(E)} · N ${fmtInt(N)}${t && TPL.length > 1 ? ` · ${esc(t.name)}` : ''}</small></span></button>`; }).join('')}</div>` : '<p class="empty">Sin puntos. Use el botón Punto o mantenga presionado el mapa.</p>'}
+    ${pts.length ? `<div class="list">${pts.map(f => { const [E, N] = toCTM(f.lat, f.lon); const t = tplById(f.tpl); const first = t?.fields.find(x => x.type !== 'photo'); const extra = first ? fieldText(f, first) : ''; return `<button class="item" data-id="${f.id}"><span class="sw" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}${extra ? ` · ${esc(extra)}` : ''}</b><small>E ${fmtInt(E)} · N ${fmtInt(N)}${t ? ` · ${esc(t.name)}` : ''}</small></span></button>`; }).join('')}</div>` : '<p class="empty">Sin puntos. Use el botón Punto o mantenga presionado el mapa.</p>'}
     <div class="sec">Tracks (${trk.length})</div>
     ${trk.length ? `<div class="list">${trk.map(f => `<button class="item" data-id="${f.id}"><span class="sw trk" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}</b><small>${fmtDist(trackLen(f.coords))} · ${new Date(f.created).toLocaleDateString('es-CO')}</small></span></button>`).join('')}</div>` : '<p class="empty">Sin tracks. Toque Track para empezar a grabar.</p>'}`, w => {
     w.querySelectorAll('[data-x]').forEach(b => b.onclick = () => exportAs(b.dataset.x));
@@ -656,7 +656,7 @@ function bindBackup() {
 $('btnSettings').onclick = () => {
   sheet('Ajustes', `
     <div class="sec">Plantillas de campos</div>
-    <p class="note">Puntos nuevos: <b>${esc(tplById(defaultTplId('point'))?.name || '—')}</b> · Tracks nuevos: <b>${esc(tplById(defaultTplId('track'))?.name || '—')}</b></p>
+    ${curMap ? `<p class="note">En este plano · Puntos: <b>${esc(choiceName('point'))}</b> · Tracks: <b>${esc(choiceName('track'))}</b></p>` : ''}
     <button class="btn primary" id="sTpl">Administrar plantillas</button>
     <div class="sec">Registro</div>
     <div class="field"><label for="sMode">Botón Punto marca en</label>
@@ -680,6 +680,42 @@ $('btnSettings').onclick = () => {
   });
 };
 
+
+/* ---------- Bienvenida (cada vez que se abre la app) ---------- */
+(function hello() {
+  const el = $('hello'); if (!el) return;
+  const d = new Date(), hr = d.getHours();
+  $('helloTitle').textContent = hr < 12 ? '¡Buenos días!' : hr < 19 ? '¡Buenas tardes!' : '¡Buenas noches!';
+  try { const t = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }); $('helloDate').textContent = t; } catch (e) { }
+  const FRASES = [
+    'Gracias por cuidar el territorio con cada punto que registras.',
+    'Tu trabajo en campo es la base de cada buena decisión ambiental.',
+    'Cada árbol que mides y cada dato que tomas cuentan una historia. Gracias por escribirla bien.',
+    'No estás solo en campo: el equipo de Merceditas está contigo.',
+    'Hoy es un buen día para conocer mejor nuestro territorio.',
+    'Lo que haces hoy ayuda a conservar el agua, los bosques y la vida de mañana.',
+    'Trabajar bien también es trabajar seguro. Cuídate tanto como cuidas el territorio.',
+    'Un dato bien tomado vale más que diez apurados. Ve a tu ritmo.',
+    'Gracias por tu compromiso; tu esfuerzo hace posible nuestro trabajo.',
+    'Si algo no sale como esperabas, respira y pide apoyo: para eso somos equipo.',
+    'Cada paso en campo es un aporte a la conservación. ¡Gracias por darlo!',
+    'La naturaleza no tiene prisa y aun así lo logra todo. Disfruta tu jornada.'
+  ];
+  const CUIDADOS = [
+    'Recuerda hidratarte y llevar protector solar.',
+    'Usa tu equipo de protección: botas, gorra y guantes.',
+    'Avisa a alguien del equipo dónde vas a trabajar hoy.',
+    'Toma pausas cortas; tu cuerpo también es tu herramienta de trabajo.',
+    'Lleva el celular cargado y una batería de respaldo.',
+    'Ante tormenta eléctrica, suspende la labor y busca refugio.',
+    'Al terminar la jornada, respalda tus datos desde Ajustes.',
+    'Revisa el terreno antes de avanzar: cuida tus pasos en pendientes.'
+  ];
+  let n = 0; try { n = (parseInt(localStorage.getItem('gm_hello') || '0', 10) || 0) + 1; localStorage.setItem('gm_hello', String(n)); } catch (e) { n = Math.floor(Math.random() * 100); }
+  $('helloMsg').textContent = FRASES[n % FRASES.length];
+  $('helloTip').textContent = CUIDADOS[n % CUIDADOS.length];
+  $('helloGo').onclick = () => { el.classList.add('out'); setTimeout(() => el.remove(), 360); };
+})();
 /* ---------- Inicio ---------- */
 function showErr(where, e) {
   const msg = `${where}: ${e?.message || e}`; console.error(msg, e);
@@ -693,7 +729,7 @@ window.__appStarted = true;
   $('cross').hidden = pointMode() !== 'mira';
   try { startGps(); } catch (e) { showErr('GPS', e); }
   try { APP?.addListener('appUrlOpen', d => openFromUri(d?.url)); APP?.getLaunchUrl?.().then(d => d?.url && setTimeout(() => openFromUri(d.url), 600)).catch(() => { }); } catch { }
-  try { APP?.addListener('backButton', () => { if ($('sheets').innerHTML) closeSheet(); else if (!rec) APP.minimizeApp(); else toast('Grabando track: use Detener antes de salir'); }); } catch { }
+  try { APP?.addListener('backButton', () => { if ($('hello')) $('helloGo').click(); else if ($('sheets').innerHTML) closeSheet(); else if (!rec) APP.minimizeApp(); else toast('Grabando track: use Detener antes de salir'); }); } catch { }
   try { navigator.storage?.persist?.().catch(() => { }); } catch { }
   try { await loadTemplates(); } catch (e) { showErr('Plantillas', e); }
   let maps = [];

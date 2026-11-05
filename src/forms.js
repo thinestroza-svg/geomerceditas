@@ -8,14 +8,47 @@ const FIELD_TYPES = {
 };
 let TPL = [];
 const tplById = id => TPL.find(t => t.id === id) || null;
-const DEF_KEY = { point: 'tplDefault', track: 'tplDefaultTrack' };
-const defaultTplId = (kind = 'point') => { const id = store.get(DEF_KEY[kind], null); return tplById(id) ? id : (TPL[0]?.id || null); };
+/* Elección de plantilla por plano: undefined = preguntar al registrar; '' = sin plantilla; id = plantilla */
+const KIND_TXT = { point: { one: 'punto', many: 'puntos' }, track: { one: 'track', many: 'tracks' } };
+const choiceKey = kind => `tplChoice_${curMap ? curMap.id : 'x'}_${kind}`;
+function getChoice(kind) {
+  const v = store.get(choiceKey(kind), null);
+  if (v === 'none') return '';
+  return tplById(v) ? v : undefined;
+}
+function setChoice(kind, id) { store.set(choiceKey(kind), id === undefined ? null : (id || 'none')); }
+const defaultTplId = kind => getChoice(kind) || '';
+const choiceName = kind => { const c = getChoice(kind); return c === undefined ? 'Preguntar al registrar' : c === '' ? 'Sin plantilla' : tplById(c).name; };
+
+/* Hoja que aparece al registrar el primer punto o track de un plano */
+function chooseTemplate(kind, onPick) {
+  const k = KIND_TXT[kind];
+  sheet(`¿Cómo quiere registrar los ${k.many}?`, `
+    <p class="note">Elija una plantilla de campos para este ${k.one}, cree una nueva o registre sin plantilla (solo nombre, nota y coordenadas).</p>
+    <div class="list">
+      <button class="item" data-pick=""><span class="t"><b>Sin plantilla</b><small>Solo nombre, nota y coordenadas CTM12</small></span></button>
+      ${TPL.map(t => `<div class="item tplpick"><button class="t pickbtn" data-pick="${t.id}"><b>${esc(t.name)}</b><small>${t.fields.length ? t.fields.map(x => esc(x.name)).join(' · ') : 'Solo nombre y nota'}</small></button><button class="btn sm" data-edit="${t.id}">Modificar</button></div>`).join('')}
+    </div>
+    <button class="btn" id="chNew">Crear plantilla nueva</button>
+    <label class="toggle" for="chKeep"><span>Usar esta elección para todos los ${k.many} de este plano<br><small class="note">Puede cambiarla en Ajustes › Plantillas</small></span><input type="checkbox" id="chKeep" checked></label>`, w => {
+    const pick = id => { if ($('chKeep')?.checked) setChoice(kind, id); closeSheet(); onPick(id); };
+    w.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => pick(b.dataset.pick));
+    w.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editTemplate(tplById(b.dataset.edit), () => chooseTemplate(kind, onPick)));
+    $('chNew').onclick = () => { const keep = $('chKeep').checked; editTemplate(null, t => t ? (keep && setChoice(kind, t.id), onPick(t.id)) : chooseTemplate(kind, onPick)); };
+  });
+}
+function withTemplate(kind, cb) {
+  const c = getChoice(kind);
+  if (c === undefined) chooseTemplate(kind, cb); else cb(c);
+}
+function tplOptions(sel) {
+  return `<option value="" ${!sel ? 'selected' : ''}>Sin plantilla</option>` + TPL.map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+}
 
 async function loadTemplates() {
   TPL = (await DB.all('templates')).sort((a, b) => a.created - b.created);
   if (!TPL.length && !store.get('tplSeeded', false)) {
     const now = Date.now();
-    const t1 = { id: uid(), name: 'General', created: now, fields: [] };
     const t2 = { id: uid(), name: 'Inventario forestal (ejemplo)', created: now + 1, fields: [
       { id: uid(), name: 'Nombre común', type: 'text', required: true },
       { id: uid(), name: 'Nombre científico', type: 'text' },
@@ -32,10 +65,10 @@ async function loadTemplates() {
       { id: uid(), name: 'Condición del clima', type: 'select', options: ['Soleado', 'Nublado', 'Lluvia'] },
       { id: uid(), name: 'Fotos', type: 'photo' }
     ] };
-    for (const t of [t1, t2, t3]) await DB.put('templates', t);
-    store.set('tplSeeded', true); store.set('tplDefault', t2.id); store.set('tplDefaultTrack', t3.id);
+    for (const t of [t2, t3]) await DB.put('templates', t);
+    store.set('tplSeeded', true);
     store.set('dirty', 0); // las plantillas de ejemplo no cuentan como datos sin respaldar
-    TPL = [t1, t2, t3];
+    TPL = [t2, t3];
   }
 }
 
@@ -174,23 +207,24 @@ function fieldsByName(f) {
 
 /* ---------- Editor de plantillas ---------- */
 function showTemplates() {
-  const opts = kind => TPL.map(t => `<option value="${t.id}" ${t.id === defaultTplId(kind) ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+  const opt = kind => { const c = getChoice(kind); return `<option value="__ask" ${c === undefined ? 'selected' : ''}>Preguntar al registrar</option><option value="none" ${c === '' ? 'selected' : ''}>Sin plantilla</option>` + TPL.map(t => `<option value="${t.id}" ${t.id === c ? 'selected' : ''}>${esc(t.name)}</option>`).join(''); };
+  const setSel = (kind, v) => v === '__ask' ? setChoice(kind, undefined) : setChoice(kind, v === 'none' ? '' : v);
   sheet('Plantillas de campos', `
-    <p class="note">Una plantilla define los campos que se llenan al registrar un punto o un track. El formulario se abre al marcar el punto y al detener el track; luego puede editarlo cuando quiera.</p>
-    <div class="field"><label for="dPt">Plantilla para puntos nuevos</label><select id="dPt">${opts('point')}</select></div>
-    <div class="field"><label for="dTr">Plantilla para tracks nuevos</label><select id="dTr">${opts('track')}</select></div>
+    <p class="note">Una plantilla define los campos que se llenan al registrar un punto o un track. Si no elige ninguna, solo se guardan nombre, nota y coordenadas.</p>
+    ${curMap ? `<div class="field"><label for="dPt">Puntos de este plano</label><select id="dPt">${opt('point')}</select></div>
+    <div class="field"><label for="dTr">Tracks de este plano</label><select id="dTr">${opt('track')}</select></div>` : ''}
     <div class="sec">Plantillas</div>
-    <div class="list">${TPL.map(t => `<button class="item" data-edit="${t.id}">
+    ${TPL.length ? `<div class="list">${TPL.map(t => `<button class="item" data-edit="${t.id}">
       <span class="t"><b>${esc(t.name)}</b><small>${t.fields.length ? t.fields.map(f => esc(f.name)).join(' · ') : 'Solo nombre y nota'}</small></span>
-      <span class="chev" aria-hidden="true">Editar</span></button>`).join('')}</div>
-    <button class="btn primary" id="tplNew">Nueva plantilla</button>`, w => {
-    $('dPt').onchange = e => store.set('tplDefault', e.target.value);
-    $('dTr').onchange = e => store.set('tplDefaultTrack', e.target.value);
+      <span class="chev" aria-hidden="true">Modificar</span></button>`).join('')}</div>` : '<p class="empty">No hay plantillas.</p>'}
+    <button class="btn primary" id="tplNew">Crear plantilla nueva</button>`, w => {
+    if ($('dPt')) { $('dPt').onchange = e => setSel('point', e.target.value); $('dTr').onchange = e => setSel('track', e.target.value); }
     w.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editTemplate(tplById(b.dataset.edit)));
     $('tplNew').onclick = () => editTemplate(null);
   });
 }
-function editTemplate(orig) {
+function editTemplate(orig, after) {
+  const back = saved => after ? after(saved) : showTemplates();
   const t = orig ? JSON.parse(JSON.stringify(orig)) : { id: uid(), name: '', created: Date.now(), fields: [{ id: uid(), name: '', type: 'text' }] };
   const capture = () => {
     t.name = $('tName2').value;
@@ -217,13 +251,13 @@ function editTemplate(orig) {
       <button class="btn" id="fAdd">Agregar campo</button>
       <p class="note" id="tErr" hidden></p>
       <div class="row"><button class="btn primary" id="tplSave">Guardar plantilla</button><button class="btn" id="tplBack">Cancelar</button></div>
-      ${orig && TPL.length > 1 ? '<button class="btn danger" id="tplDel">Eliminar plantilla</button>' : ''}`, w => {
+      ${orig ? '<button class="btn danger" id="tplDel">Eliminar plantilla</button>' : ''}`, w => {
       w.querySelectorAll('.fdef select').forEach(s => s.onchange = () => { capture(); render(); });
       w.querySelectorAll('[data-up]').forEach(b => b.onclick = () => { capture(); const i = +b.dataset.up; [t.fields[i - 1], t.fields[i]] = [t.fields[i], t.fields[i - 1]]; render(); });
       w.querySelectorAll('[data-down]').forEach(b => b.onclick = () => { capture(); const i = +b.dataset.down; [t.fields[i + 1], t.fields[i]] = [t.fields[i], t.fields[i + 1]]; render(); });
       w.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { capture(); t.fields.splice(+b.dataset.rm, 1); render(); });
       $('fAdd').onclick = () => { capture(); const fd = { id: uid(), name: '', type: 'text' }; t.fields.push(fd); render(); setTimeout(() => $('fn_' + fd.id)?.focus(), 50); };
-      $('tplBack').onclick = showTemplates;
+      $('tplBack').onclick = () => back(null);
       $('tplSave').onclick = async () => {
         capture();
         t.fields = t.fields.filter(fd => fd.name.trim());
@@ -236,20 +270,15 @@ function editTemplate(orig) {
         t.name = t.name.trim();
         await DB.put('templates', t);
         const i = TPL.findIndex(x => x.id === t.id); if (i >= 0) TPL[i] = t; else TPL.push(t);
-        if (!orig && TPL.length === 1) store.set('tplDefault', t.id);
-        toast('Plantilla guardada'); showTemplates();
+        toast('Plantilla guardada'); back(t);
       };
       if ($('tplDel')) {
         const used = features.filter(f => f.tpl === t.id).length;
-        const fb = TPL.find(x => x.id !== t.id);
-        confirmBtn($('tplDel'), used ? `Toque otra vez: ${used} puntos pasarán a «${fb.name}»` : 'Toque otra vez para eliminar', async () => {
+        confirmBtn($('tplDel'), used ? `Toque otra vez: ${used} registros quedarán sin plantilla` : 'Toque otra vez para eliminar', async () => {
           await DB.del('templates', t.id); TPL = TPL.filter(x => x.id !== t.id);
-          const fallback = fb.id;
-          for (const f of (await DB.all('features')).filter(f => f.tpl === t.id)) { f.tpl = fallback; await DB.put('features', f); }
-          features.forEach(f => { if (f.tpl === t.id) f.tpl = fallback; });
-          if (store.get('tplDefault') === t.id) store.set('tplDefault', fallback);
-          if (store.get('tplDefaultTrack') === t.id) store.set('tplDefaultTrack', fallback);
-          showTemplates();
+          for (const f of (await DB.all('features')).filter(f => f.tpl === t.id)) { f.tpl = ''; await DB.put('features', f); }
+          features.forEach(f => { if (f.tpl === t.id) f.tpl = ''; });
+          back(null);
         });
       }
     });
