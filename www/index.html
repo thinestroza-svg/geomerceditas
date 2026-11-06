@@ -26,7 +26,7 @@
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font:15px/1.4 var(--ui);overflow:hidden;-webkit-tap-highlight-color:transparent}
-#map{position:absolute;top:0;right:0;bottom:0;left:0;background:var(--bg)}
+#map{position:absolute;top:0;right:0;bottom:0;left:0;background:var(--bg);z-index:0;isolation:isolate}
 button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--gps);outline-offset:2px}
 [hidden]{display:none!important}
@@ -126,6 +126,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .pinlbl{position:absolute;left:24px;top:-2px;white-space:nowrap;font:700 12px var(--ui);color:#111;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
 .leaflet-container{font-family:var(--ui)}
+.pinlbl.dot{position:static;left:auto;top:auto;font-size:11px}
 
 
 /* Formularios de plantilla */
@@ -190,6 +191,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .tplpick .pickbtn b{white-space:normal}
 .tplpick .pickbtn small{font:12px var(--mono);color:var(--muted);line-height:1.5}
 .btn.sm{padding:8px 12px;font-size:14px;flex:none}
+.tabs{position:sticky;top:-12px;z-index:2;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:4px;margin-top:-4px;background:var(--bg);border-radius:12px;box-shadow:0 0 0 12px var(--panel)}
+.tab{border:0;background:none;border-radius:9px;padding:9px 6px;font-weight:600;color:var(--muted)}
+.tab span{font:12px var(--mono);opacity:.8;margin-left:2px}
+.tab.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgb(0 0 0/.15)}
+#lPane{display:flex;flex-direction:column;gap:12px}
+#lPane>*{flex-shrink:0}
 /* Bienvenida al abrir la app (debajo de la franja del logo) */
 .hello{position:fixed;left:0;right:0;bottom:0;top:calc(var(--safe-t) + var(--brand-h));z-index:2500;overflow:auto;
   display:flex;align-items:center;justify-content:center;
@@ -212,7 +219,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .gr-steps{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .gr-steps small{color:var(--muted);font-size:13px;line-height:1.4}
 .gr-mapwrap{flex:1;min-height:0;position:relative}
-.gr-map{position:absolute;top:0;right:0;bottom:0;left:0;background:#2a2f2c}
+.gr-map{position:absolute;top:0;right:0;bottom:0;left:0;background:#2a2f2c;z-index:0;isolation:isolate}
 .gr-cross{z-index:500}
 .gr-cross::before,.gr-cross::after{background:#e0392b;opacity:1}
 .gr-bottom{background:var(--panel);color:var(--ink);border-top:1px solid var(--line);padding:10px max(14px,var(--safe-r)) calc(var(--safe-b) + 10px) max(14px,var(--safe-l));display:flex;flex-direction:column;gap:8px}

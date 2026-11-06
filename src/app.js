@@ -210,17 +210,34 @@ function pinIcon(f) {
   return L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 26],
     html: `<div class="pin" style="background:${f.color}"></div><div class="pinlbl">${esc(f.name)}</div>` });
 }
+/* Con muchos puntos se dibujan en un solo lienzo y las etiquetas solo aparecen de cerca */
+const MANY = 300, canvasR = L.canvas({ padding: 0.3, tolerance: 6 });
+const labelLayer = L.layerGroup().addTo(map);
+function drawLabels() {
+  labelLayer.clearLayers();
+  const pts = features.filter(f => f.type === 'point');
+  if (pts.length <= MANY || map.getZoom() < 18) return;
+  const b = map.getBounds().pad(0.1), vis = pts.filter(f => b.contains([f.lat, f.lon]));
+  if (vis.length > 150) return;
+  for (const f of vis) L.marker([f.lat, f.lon], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', iconSize: [0, 0], iconAnchor: [-8, 8], html: `<div class="pinlbl dot">${esc(f.name)}</div>` }) }).addTo(labelLayer);
+}
+map.on('moveend zoomend', () => { if (features.length > MANY) drawLabels(); });
 function drawFeatures() {
   featLayer.clearLayers(); markers.clear();
+  const many = features.filter(f => f.type === 'point').length > MANY;
   for (const f of features) {
     if (f.type === 'point') {
-      const m = L.marker([f.lat, f.lon], { icon: pinIcon(f) }).on('click', () => editPoint(f)).addTo(featLayer);
+      const m = many
+        ? L.circleMarker([f.lat, f.lon], { renderer: canvasR, radius: 6, color: '#ffffff', weight: 1.5, fillColor: f.color, fillOpacity: 1 })
+        : L.marker([f.lat, f.lon], { icon: pinIcon(f) });
+      m.on('click', () => editPoint(f)).addTo(featLayer);
       markers.set(f.id, m);
     } else if (f.coords.length) {
       const pl = L.polyline(f.coords.map(c => [c[0], c[1]]), { color: f.color, weight: 4, opacity: .9 }).on('click', () => editTrack(f)).addTo(featLayer);
       markers.set(f.id, pl);
     }
   }
+  drawLabels();
 }
 
 async function openMap(id, fit = true) {
@@ -510,25 +527,60 @@ async function openFromUri(url) {
 }
 
 /* ---------- Lista y exportación ---------- */
+let listTab = 'pts', listQuery = '';
+const LIST_PAGE = 100;
+function pointRow(f) {
+  const [E, N] = toCTM(f.lat, f.lon); const t = tplById(f.tpl); const first = t?.fields.find(x => x.type !== 'photo'); const extra = first ? fieldText(f, first) : '';
+  return `<button class="item" data-id="${f.id}"><span class="sw" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}${extra ? ` · ${esc(extra)}` : ''}</b><small>E ${fmtInt(E)} · N ${fmtInt(N)}${t ? ` · ${esc(t.name)}` : ''}</small></span></button>`;
+}
+function trackRow(f) {
+  return `<button class="item" data-id="${f.id}"><span class="sw trk" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}</b><small>${fmtDist(trackLen(f.coords))} · ${new Date(f.created).toLocaleDateString('es-CO')}</small></span></button>`;
+}
+function featText(f) {
+  const t = tplById(f.tpl);
+  return norm([f.name, f.note, t ? t.name : '', ...(t ? t.fields.map(fd => fieldText(f, fd)) : [])].join(' '));
+}
 function showList() {
   if (!curMap) { newBlankProject(); return; }
   const pts = features.filter(f => f.type === 'point'), trk = features.filter(f => f.type === 'track');
+  const tab = (id, label) => `<button class="tab${listTab === id ? ' on' : ''}" data-tab="${id}" role="tab" aria-selected="${listTab === id}">${label}</button>`;
   sheet(curMap.name, `
-    <div class="sec">Importar</div>
-    <button class="btn" id="lImp">Importar puntos (Excel, CSV o texto)</button>
-    <div class="sec">Exportar</div>
-    <div class="row"><button class="btn primary" data-x="zip">Todo con fotos (ZIP)</button></div>
-    <div class="row"><button class="btn" data-x="kml">KML</button><button class="btn" data-x="gpx">GPX</button><button class="btn" data-x="csv">CSV CTM12</button></div>
-    <p class="note">El ZIP trae el CSV (con todos los campos y Este/Norte CTM12), el KML y la carpeta de fotos nombradas por punto. KML abre en Google Earth y QGIS; GPX en cualquier GPS.</p>
-    ${needsBackup() ? `<button class="btn" id="bQuick" style="border-color:var(--warn);color:var(--warn)">Hay datos sin respaldar · Crear respaldo</button>` : ''}
-    <div class="sec">Puntos (${pts.length})</div>
-    ${pts.length ? `<div class="list">${pts.map(f => { const [E, N] = toCTM(f.lat, f.lon); const t = tplById(f.tpl); const first = t?.fields.find(x => x.type !== 'photo'); const extra = first ? fieldText(f, first) : ''; return `<button class="item" data-id="${f.id}"><span class="sw" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}${extra ? ` · ${esc(extra)}` : ''}</b><small>E ${fmtInt(E)} · N ${fmtInt(N)}${t ? ` · ${esc(t.name)}` : ''}</small></span></button>`; }).join('')}</div>` : '<p class="empty">Sin puntos. Use el botón Punto o mantenga presionado el mapa.</p>'}
-    <div class="sec">Tracks (${trk.length})</div>
-    ${trk.length ? `<div class="list">${trk.map(f => `<button class="item" data-id="${f.id}"><span class="sw trk" style="background:${f.color}"></span><span class="t"><b>${esc(f.name)}</b><small>${fmtDist(trackLen(f.coords))} · ${new Date(f.created).toLocaleDateString('es-CO')}</small></span></button>`).join('')}</div>` : '<p class="empty">Sin tracks. Toque Track para empezar a grabar.</p>'}`, w => {
-    w.querySelectorAll('[data-x]').forEach(b => b.onclick = () => exportAs(b.dataset.x));
-    $('lImp').onclick = () => $('filePts').click();
-    if ($('bQuick')) $('bQuick').onclick = async () => { await makeBackup(); showList(); };
-    w.querySelectorAll('.list .item').forEach(b => b.onclick = () => { const f = features.find(x => x.id === b.dataset.id); f.type === 'point' ? editPoint(f) : editTrack(f); });
+    <div class="tabs" role="tablist">${tab('pts', `Puntos <span>${pts.length}</span>`)}${tab('trk', `Tracks <span>${trk.length}</span>`)}${tab('io', 'Exportar')}</div>
+    <div id="lPane"></div>`, w => {
+    w.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { if (listTab !== b.dataset.tab) listQuery = ''; listTab = b.dataset.tab; showList(); });
+    const pane = $('lPane');
+    if (listTab === 'io') {
+      pane.innerHTML = `
+        ${needsBackup() ? `<button class="btn" id="bQuick" style="border-color:var(--warn);color:var(--warn)">Hay datos sin respaldar · Crear respaldo</button>` : ''}
+        <div class="sec">Exportar</div>
+        <div class="row"><button class="btn primary" data-x="zip">Todo con fotos (ZIP)</button></div>
+        <div class="row"><button class="btn" data-x="kml">KML</button><button class="btn" data-x="gpx">GPX</button><button class="btn" data-x="csv">CSV CTM12</button></div>
+        <p class="note">El ZIP trae el CSV (con todos los campos y Este/Norte CTM12), el KML y la carpeta de fotos nombradas por punto. KML abre en Google Earth y QGIS; GPX en cualquier GPS.</p>
+        <div class="sec">Importar</div>
+        <button class="btn" id="lImp">Importar puntos (Excel, CSV o texto)</button>`;
+      pane.querySelectorAll('[data-x]').forEach(b => b.onclick = () => exportAs(b.dataset.x));
+      $('lImp').onclick = () => $('filePts').click();
+      if ($('bQuick')) $('bQuick').onclick = async () => { await makeBackup(); showList(); };
+      return;
+    }
+    const isPts = listTab === 'pts', all = isPts ? pts : trk;
+    if (!all.length) { pane.innerHTML = isPts ? '<p class="empty">Sin puntos. Use el botón Punto, mantenga presionado el mapa o importe puntos en la pestaña Exportar.</p>' : '<p class="empty">Sin tracks. Toque Track para empezar a grabar.</p>'; return; }
+    pane.innerHTML = `<div class="field"><input id="lQ" type="search" placeholder="Buscar ${isPts ? 'punto por nombre o dato' : 'track por nombre'}" aria-label="Buscar" value="${esc(listQuery)}" autocomplete="off"></div><p class="note" id="lCount"></p><div class="list" id="lList"></div><button class="btn" id="lMore" hidden></button>`;
+    let shown = 0, items = all;
+    const render = reset => {
+      if (reset) { const q = norm(listQuery); items = q ? all.filter(f => featText(f).indexOf(q) >= 0) : all; shown = 0; $('lList').innerHTML = ''; }
+      const next = items.slice(shown, shown + LIST_PAGE);
+      $('lList').insertAdjacentHTML('beforeend', next.map(isPts ? pointRow : trackRow).join(''));
+      shown += next.length;
+      $('lList').hidden = !items.length;
+      $('lCount').textContent = listQuery ? `${items.length} de ${all.length} ${isPts ? 'puntos' : 'tracks'}` : items.length > LIST_PAGE ? `Mostrando ${shown} de ${items.length}` : '';
+      const left = items.length - shown;
+      $('lMore').hidden = left <= 0; $('lMore').textContent = `Mostrar ${Math.min(left, LIST_PAGE)} más (quedan ${left})`;
+    };
+    $('lList').onclick = e => { const b = e.target.closest('.item'); if (!b) return; const f = features.find(x => x.id === b.dataset.id); if (f) f.type === 'point' ? editPoint(f) : editTrack(f); };
+    $('lMore').onclick = () => render(false);
+    let tmr; $('lQ').oninput = e => { clearTimeout(tmr); tmr = setTimeout(() => { listQuery = e.target.value; render(true); }, 180); };
+    render(true);
   });
 }
 $('btnList').onclick = showList;
